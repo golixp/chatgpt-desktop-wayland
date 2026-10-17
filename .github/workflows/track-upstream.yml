@@ -1,0 +1,246 @@
+name: Track official ChatGPT Linux release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: track-chatgpt-linux
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: chatgpt-desktop-wayland
+  BUILDER_REPOSITORY: ilysenko/codex-desktop-linux
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      base_sha: ${{ steps.state.outputs.base_sha }}
+      needs_build: ${{ steps.state.outputs.needs_build }}
+    steps:
+      - name: Check out recipe
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Verify signed upstream metadata
+        id: upstream
+        env:
+          UPSTREAM_METADATA: ${{ runner.temp }}/upstream.json
+        run: |
+          set -Eeuo pipefail
+          python scripts/fetch_upstream_metadata.py \
+            --key openai-codex-linux-repository-key.gpg.base64 \
+            --metadata "$UPSTREAM_METADATA"
+          builder_commit="$(git ls-remote "https://github.com/${BUILDER_REPOSITORY}.git" refs/heads/main | awk 'NR == 1 { print $1 }')"
+          [[ "$builder_commit" =~ ^[0-9a-f]{40}$ ]]
+          echo "builder_commit=$builder_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Update candidate pins
+        env:
+          UPSTREAM_METADATA: ${{ runner.temp }}/upstream.json
+          BUILDER_COMMIT: ${{ steps.upstream.outputs.builder_commit }}
+        run: |
+          set -Eeuo pipefail
+          python scripts/track_upstream.py \
+            "$UPSTREAM_METADATA" PKGBUILD .SRCINFO "$BUILDER_COMMIT"
+          python - "$UPSTREAM_METADATA" "$BUILDER_COMMIT" upstream.json <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          metadata = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          metadata.pop("depends", None)
+          metadata["builder_commit"] = sys.argv[2]
+          pathlib.Path(sys.argv[3]).write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+          PY
+
+      - name: Decide whether a fresh build is required
+        id: state
+        run: |
+          set -Eeuo pipefail
+          base_sha="$(git rev-parse HEAD)"
+          recipe_changed=false
+          if ! git diff --quiet -- PKGBUILD .SRCINFO upstream.json; then
+            recipe_changed=true
+          fi
+          needs_build=false
+          if [[ "$recipe_changed" == true ]] || [[ ! -f .ci/validated.json ]] || \
+             ! python scripts/recipe_digest.py --verify .ci/validated.json; then
+            needs_build=true
+          fi
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "needs_build=$needs_build" >> "$GITHUB_OUTPUT"
+          printf 'base=%s recipe_changed=%s needs_build=%s\n' "$base_sha" "$recipe_changed" "$needs_build"
+
+      - name: Assemble candidate recipe artifact
+        run: |
+          set -Eeuo pipefail
+          mkdir -p candidate/scripts candidate/.ci
+          cp PKGBUILD .SRCINFO chatgpt-desktop-wayland.install \
+             LicenseRef-OpenAI-Terms patches-grim-niri.patch upstream.json candidate/
+          cp scripts/recipe_digest.py candidate/scripts/
+          if [[ -f .ci/validated.json ]]; then
+            cp .ci/validated.json candidate/.ci/
+          fi
+
+      - name: Upload candidate recipe
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-recipe
+          path: candidate
+          include-hidden-files: true
+          if-no-files-found: error
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.needs_build == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Download candidate recipe
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate-recipe
+          path: recipe
+
+      - name: Install isolated Arch build dependencies
+        run: |
+          set -Eeuo pipefail
+          mapfile -t runtime_deps < <(
+            sed -n 's/^[[:space:]]*depends = //p' recipe/.SRCINFO
+          )
+          pacman -Syu --noconfirm --needed \
+            archlinux-keyring asar base-devel curl dpkg git gnupg nodejs python rust \
+            alsa-lib at-spi2-core cairo gdk-pixbuf2 gtk3 hicolor-icon-theme \
+            libcups libdrm libglvnd libnotify libx11 libxcb libxcomposite \
+            libxdamage libxext libxfixes libxkbcommon libxrandr mesa nspr nss \
+            pango xdg-utils ydotool "${runtime_deps[@]}"
+          useradd --create-home --uid 1000 package-builder
+          chown -R package-builder:package-builder recipe
+
+      - name: Validate metadata and build the package
+        run: |
+          set -Eeuo pipefail
+          cd recipe
+          generated="$(mktemp)"
+          runuser -u package-builder -- makepkg --printsrcinfo > "$generated"
+          cmp --silent "$generated" .SRCINFO
+          runuser -u package-builder -- makepkg --cleanbuild --clean --noconfirm
+
+      - name: Record validated recipe digest
+        run: |
+          set -Eeuo pipefail
+          cd recipe
+          python scripts/recipe_digest.py --output .ci/validated.json
+
+      - name: Upload validated recipe marker
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: validated-recipe
+          path: recipe/.ci/validated.json
+          include-hidden-files: true
+          if-no-files-found: error
+
+  publish:
+    needs: [discover, build]
+    if: >-
+      always() && needs.discover.result == 'success' &&
+      (needs.build.result == 'success' || needs.discover.outputs.needs_build == 'false')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the expected recipe revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+
+      - name: Download candidate recipe
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate-recipe
+          path: candidate
+
+      - name: Download fresh validation marker
+        if: needs.discover.outputs.needs_build == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: validated-recipe
+          path: candidate/.ci
+
+      - name: Verify candidate before publishing
+        env:
+          BASE_SHA: ${{ needs.discover.outputs.base_sha }}
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          [[ "$(git rev-parse origin/main)" == "$BASE_SHA" ]]
+          python candidate/scripts/recipe_digest.py --verify candidate/.ci/validated.json
+
+      - name: Commit validated recipe to GitHub
+        run: |
+          set -Eeuo pipefail
+          cp candidate/PKGBUILD candidate/.SRCINFO candidate/patches-grim-niri.patch candidate/upstream.json .
+          cp candidate/chatgpt-desktop-wayland.install .
+          mkdir -p .ci
+          cp candidate/.ci/validated.json .ci/
+          git config user.name 'chatgpt-desktop-wayland updater'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add PKGBUILD .SRCINFO upstream.json chatgpt-desktop-wayland.install \
+            patches-grim-niri.patch .ci/validated.json
+          if git diff --cached --quiet; then
+            echo 'recipe is already current'
+            exit 0
+          fi
+          version="$(sed -n 's/^pkgver=//p' candidate/PKGBUILD | head -1)"
+          git commit -m "chore: track ChatGPT Linux ${version}"
+          git push origin HEAD:main
+
+      - name: Push the same validated recipe to AUR
+        if: vars.AUR_PUBLISH_ENABLED == 'true'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_KNOWN_HOSTS: ${{ secrets.AUR_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$AUR_SSH_PRIVATE_KEY" && -n "$AUR_KNOWN_HOSTS" ]]
+          ssh_dir="$RUNNER_TEMP/ssh"
+          install -d -m 700 "$ssh_dir"
+          install -m 600 /dev/null "$ssh_dir/id_ed25519"
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$ssh_dir/id_ed25519"
+          printf '%s\n' "$AUR_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$ssh_dir/known_hosts"
+
+          aur="$RUNNER_TEMP/aur"
+          git clone "ssh://aur@aur.archlinux.org/${PACKAGE_NAME}.git" "$aur"
+          cd "$aur"
+          extra="$(git ls-files | sort -u | comm -23 - <(printf '%s\n' \
+            PKGBUILD .SRCINFO chatgpt-desktop-wayland.install LicenseRef-OpenAI-Terms \
+            patches-grim-niri.patch upstream.json | sort))"
+          [[ -z "$extra" ]] || {
+            printf 'unexpected files already present in AUR checkout:\n%s\n' "$extra" >&2
+            exit 1
+          }
+          cp "$GITHUB_WORKSPACE"/candidate/PKGBUILD \
+             "$GITHUB_WORKSPACE"/candidate/.SRCINFO \
+             "$GITHUB_WORKSPACE"/candidate/chatgpt-desktop-wayland.install \
+             "$GITHUB_WORKSPACE"/candidate/LicenseRef-OpenAI-Terms \
+             "$GITHUB_WORKSPACE"/candidate/patches-grim-niri.patch \
+             "$GITHUB_WORKSPACE"/candidate/upstream.json .
+          git config user.name 'chatgpt-desktop-wayland updater'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- PKGBUILD .SRCINFO chatgpt-desktop-wayland.install \
+            LicenseRef-OpenAI-Terms patches-grim-niri.patch upstream.json
+          if git diff --cached --quiet; then
+            echo 'AUR already matches the validated recipe'
+            exit 0
+          fi
+          git commit -m 'chore: track ChatGPT Linux'
+          git push origin HEAD:master

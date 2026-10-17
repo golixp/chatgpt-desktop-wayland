@@ -1,0 +1,19 @@
+# Local build and extraction state
+builder/
+src/
+pkg/
+target/
+
+# Downloaded and built binaries
+*.deb
+*.pkg.tar.zst
+*.pkg.tar.xz
+*.pkg.tar.gz
+*.pkg.tar.lrz
+*.pkg.tar.lrz
+
+# Local generated metadata and scratch files
+*.log
+*.tmp
+*.bak
+.DS_Store
