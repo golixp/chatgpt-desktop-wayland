@@ -63,7 +63,8 @@ The local workflow in
 candidate recipe, builds it in a disposable Arch container, runs the native
 Computer Use and launcher tests, and publishes only the validated recipe. AUR
 publishing is disabled until the repository owner explicitly supplies the
-required secret and variable; this checkout has **not** deployed anything.
+required secret and variable; the GitHub updater is active, but no AUR push has
+been enabled.
 
 For a future deployment, create the AUR package manually, add an SSH key as the
 `AUR_SSH_PRIVATE_KEY` repository secret, add its exact `known_hosts` line as
