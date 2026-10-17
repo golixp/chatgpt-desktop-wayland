@@ -10,10 +10,13 @@ target/
 *.pkg.tar.xz
 *.pkg.tar.gz
 *.pkg.tar.lrz
-*.pkg.tar.lrz
 
 # Local generated metadata and scratch files
 *.log
 *.tmp
 *.bak
 .DS_Store
+
+# Generated Python bytecode
+__pycache__/
+*.pyc
