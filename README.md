@@ -57,9 +57,12 @@ permission. A diagnostic command is available inside the package:
 builder commit. `scripts/track_upstream.py` only accepts a newer safe version,
 an exact 64-character payload hash and a 40-character builder commit. It resets
 `pkgrel` for a new app version and increments it for a builder-only change.
+The scheduled updater keeps the builder at the reviewed commit in `PKGBUILD`;
+it does not follow the third-party builder's moving `main` branch. Builder
+upgrades require reviewing the local patches and validating a full build first.
 
-The local workflow in
-`.github/workflows/track-upstream.yml` checks these pins hourly, creates a
+The GitHub workflow in
+`.github/workflows/track-upstream.yml` checks official releases hourly, creates a
 candidate recipe, builds it in a disposable Arch container, runs the native
 Computer Use and launcher tests, and publishes only the validated recipe. AUR
 publishing is disabled until the repository owner explicitly supplies the
@@ -75,5 +78,6 @@ previous publish attempt failed.
 
 GitHub scheduled workflows use UTC and can be delayed during load; public
 repositories can also have schedules disabled after long inactivity. The
-workflow therefore also supports `workflow_dispatch`, and every package build
+workflow therefore also supports `workflow_dispatch` with an optional
+`force_build` input to revalidate an unchanged recipe. Every package build
 still verifies the signed metadata and payload hash locally.

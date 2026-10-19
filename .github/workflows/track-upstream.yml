@@ -2,6 +2,11 @@ name: Track official ChatGPT Linux release
 
 on:
   workflow_dispatch:
+    inputs:
+      force_build:
+        description: Rebuild the pinned recipe even when the official version is unchanged
+        type: boolean
+        default: false
   schedule:
     - cron: '17 * * * *'
 
@@ -14,7 +19,6 @@ concurrency:
 
 env:
   PACKAGE_NAME: chatgpt-desktop-wayland
-  BUILDER_REPOSITORY: ilysenko/codex-desktop-linux
 
 jobs:
   discover:
@@ -37,7 +41,16 @@ jobs:
           python scripts/fetch_upstream_metadata.py \
             --key openai-codex-linux-repository-key.gpg.base64 \
             --metadata "$UPSTREAM_METADATA"
-          builder_commit="$(git ls-remote "https://github.com/${BUILDER_REPOSITORY}.git" refs/heads/main | awk 'NR == 1 { print $1 }')"
+          # Track official releases automatically; builder changes need a reviewed
+          # pin update because local patches depend on its source layout.
+          builder_commit="$(python - <<'PYTHON'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "scripts")
+          from recipe_digest import read_pkgbuild_value
+          print(read_pkgbuild_value(Path("PKGBUILD").read_text(), "_builder_commit"))
+          PYTHON
+          )"
           [[ "$builder_commit" =~ ^[0-9a-f]{40}$ ]]
           echo "builder_commit=$builder_commit" >> "$GITHUB_OUTPUT"
 
@@ -62,6 +75,8 @@ jobs:
 
       - name: Decide whether a fresh build is required
         id: state
+        env:
+          FORCE_BUILD: ${{ inputs.force_build || false }}
         run: |
           set -Eeuo pipefail
           base_sha="$(git rev-parse HEAD)"
@@ -70,7 +85,8 @@ jobs:
             recipe_changed=true
           fi
           needs_build=false
-          if [[ "$recipe_changed" == true ]] || [[ ! -f .ci/validated.json ]] || \
+          if [[ "$FORCE_BUILD" == true ]] || [[ "$recipe_changed" == true ]] || \
+             [[ ! -f .ci/validated.json ]] || \
              ! python scripts/recipe_digest.py --verify .ci/validated.json; then
             needs_build=true
           fi
