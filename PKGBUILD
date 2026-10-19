@@ -1,7 +1,7 @@
 # Maintainer: golixp
 pkgname=chatgpt-desktop-wayland
 pkgver=26.1013.40934
-pkgrel=8
+pkgrel=9
 pkgdesc="Unofficial ChatGPT desktop with Linux Computer Use on native Wayland"
 arch=('x86_64')
 url='https://github.com/ilysenko/codex-desktop-linux'
@@ -129,7 +129,9 @@ prepare() {
 
 check() {
     cd "$srcdir/builder"
-    node --test \
+    # The desktop exports these identifiers to child processes. Launcher tests
+    # use their own app fixtures and must not inherit the running app identity.
+    env -u CODEX_LINUX_APP_ID -u CODEX_LINUX_APP_DISPLAY_NAME node --test \
         linux-features/computer-use-linux/test.js \
         linux-features/computer-use-linux/*.test.js \
         launcher/start.test.js

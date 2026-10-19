@@ -1,7 +1,7 @@
 pkgbase = chatgpt-desktop-wayland
 	pkgdesc = Unofficial ChatGPT desktop with Linux Computer Use on native Wayland
 	pkgver = 26.1013.40934
-	pkgrel = 8
+	pkgrel = 9
 	url = https://github.com/ilysenko/codex-desktop-linux
 	install = chatgpt-desktop-wayland.install
 	arch = x86_64
