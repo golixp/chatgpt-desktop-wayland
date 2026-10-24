@@ -61,6 +61,19 @@ The scheduled updater keeps the builder at the reviewed commit in `PKGBUILD`;
 it does not follow the third-party builder's moving `main` branch. Builder
 upgrades require reviewing the local patches and validating a full build first.
 
+`patches-computer-use-compat.patch` backports the Computer Use compatibility
+changes from upstream commit
+[`ad6f0261052d4960a03f667ae160b70aac3e424a`](https://github.com/ilysenko/codex-desktop-linux/commit/ad6f0261052d4960a03f667ae160b70aac3e424a)
+for ChatGPT 26.1021.22027, with regression coverage. It handles the updated
+Windows/macOS surface selector, audio environment, authenticated chat resume,
+desktop app handlers and relocated Settings bundle. Critical patch checks
+remain enabled, so future incompatible releases stop before publication.
+
+`chatgpt.png` is the official ChatGPT mark, rendered at 256×256 on white from
+[OpenAI's SVG asset](https://cdn.oaistatic.com/assets/favicon-l4nq08hd.svg).
+It is checked in and checksummed with the recipe, and supplies both the desktop
+menu icon and the app's runtime icon instead of the builder's Codex icon.
+
 The GitHub workflow in
 `.github/workflows/track-upstream.yml` checks official releases hourly, creates a
 candidate recipe, builds it in a disposable Arch container, runs the native

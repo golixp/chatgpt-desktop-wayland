@@ -14,6 +14,8 @@ FILES = (
     "chatgpt-desktop-wayland.install",
     "LicenseRef-OpenAI-Terms",
     "patches-grim-niri.patch",
+    "patches-computer-use-compat.patch",
+    "chatgpt.png",
     "upstream.json",
 )
 

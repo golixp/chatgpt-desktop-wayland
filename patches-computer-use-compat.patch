@@ -1,0 +1,302 @@
+Backport Computer Use support for the signed ChatGPT 26.1021.22027 bundle.
+Source: https://github.com/ilysenko/codex-desktop-linux/commit/ad6f0261052d4960a03f667ae160b70aac3e424a
+Includes local regression coverage for desktop handlers, audio and authentication.
+Keep the reviewed builder pin and critical patch enforcement unchanged.
+
+diff --git a/linux-features/computer-use-linux/patch.js b/linux-features/computer-use-linux/patch.js
+index 18f3fe45..6cfd06b7 100644
+--- a/linux-features/computer-use-linux/patch.js
++++ b/linux-features/computer-use-linux/patch.js
+@@ -76,7 +76,7 @@ module.exports = [
+   webviewAssetPatch({
+     id: "native-settings-visibility",
+     order: 20_160,
+-    pattern: /^app-initial-[^.]+\.js$/,
++    pattern: /^[A-Za-z0-9_-]+\.js$/,
+     assetMatch: matchesNativeSettingsVisibilityContract,
+     missingDescription: "Plugins presentation filter",
+     skipDescription: "Linux native Settings visibility patch",
+diff --git a/linux-features/computer-use-linux/resume.test.js b/linux-features/computer-use-linux/resume.test.js
+index 562b933a..58a34a4c 100644
+--- a/linux-features/computer-use-linux/resume.test.js
++++ b/linux-features/computer-use-linux/resume.test.js
+@@ -37,8 +37,9 @@ function resumeHarness(source) {
+   const resumeSource = owner(source, call.index);
+   const cache = only(resumeSource, new RegExp(`=(${IDENT})\\?await (${IDENT})\\((${IDENT})\\):null,${IDENT}=\\1\\?(${IDENT})\\(\\):`, "g"));
+   const select = only(resumeSource, new RegExp(`\\?\\.selection\\?\\?await (${IDENT})\\(`, "g"));
+-  const config = only(resumeSource, new RegExp(`let ${IDENT}=await (${IDENT})\\(\\{\\.\\.\\.${IDENT},selection:${call[4]}\\}\\)`, "g"));
+-  const identity = only(resumeSource, new RegExp(`(${IDENT})\\(${cache[3]}\\.getCachedAuthenticatedPrincipal\\?\\.\\(\\)\\)`, "g"));
++  const config = only(resumeSource, new RegExp(`let ${IDENT}=await (${IDENT})\\(\\{\\.\\.\\.${IDENT},selection:${call[4]},hostServicesPipePath:${IDENT}\\|\\|!${IDENT}\\.computerAudio\\?${IDENT}\\.hostServicesPipePath:null\\}\\)`, "g"));
++  const principal = only(resumeSource, new RegExp(`(${IDENT})=${IDENT}\\?await ${cache[3]}\\.getAuthenticatedPrincipal\\(\\)\\.catch\\(\\(\\)=>null\\):null,`, "g"));
++  const identity = only(resumeSource, new RegExp(`(${IDENT})\\(${principal[1]}\\)\\?\\?(${IDENT})`, "g"));
+   const env = only(resumeSource, new RegExp(`\\[(${IDENT})\\]:${IDENT},\\[(${IDENT})\\]:(${IDENT})\\.default\\.env\\.CODEX_APP_TOOLS_PIPE_PATH\\?\\?\`\`,\\[(${IDENT})\\]:`, "g"));
+   const fallback = only(resumeSource, new RegExp(`\\?\\{\\.\\.\\.${IDENT},\\.\\.\\.(${IDENT})\\}`, "g"));
+   const cleanup = only(resumeSource, new RegExp(`\\)\\),(${IDENT})\\(${IDENT}\\[\`mcp_servers\\.node_repl\`\\],${call[4]}\\.cuaReplSurfaces\\)`, "g"));
+@@ -60,6 +61,7 @@ function resumeHarness(source) {
+     [select[1]]: () => { throw Error("Unexpected fallback instead of cached selection"); },
+     [config[1]]: async () => ({ "mcp_servers.node_repl": { command: "/node", env: { node: "/node", packageRoot: "/bundled" } } }),
+     [identity[1]]: () => "test-identity",
++    [identity[2]]: "fallback-identity",
+     [env[1]]: "identity", [env[2]]: "toolsPipe", [env[4]]: "browserIdentity",
+     [env[3]]: { default: { env: {} } },
+     [fallback[1]]: { "mcp_servers.cua_repl": { enabled: false } },
+@@ -70,7 +72,7 @@ function resumeHarness(source) {
+   const sharedResume = vm.runInNewContext(`${buildSource}\n(${resumeSource})`, globals);
+   return async (selection, enabled = true) => {
+     cached = { selection, cuaReplEnabled: enabled };
+-    return sharedResume({ appServerConnection: { hostConfig: { kind: "local" }, getCachedAuthenticatedPrincipal: () => ({}) } });
++    return sharedResume({ appServerConnection: { hostConfig: { kind: "local" }, getAuthenticatedPrincipal: async () => ({}) } });
+   };
+ }
+ 
+diff --git a/linux-features/computer-use-linux/test.js b/linux-features/computer-use-linux/test.js
+index 0328555e..125335d6 100644
+--- a/linux-features/computer-use-linux/test.js
++++ b/linux-features/computer-use-linux/test.js
+@@ -8,6 +8,7 @@ const fs = require("node:fs");
+ const os = require("node:os");
+ const path = require("node:path");
+ const test = require("node:test");
++const vm = require("node:vm");
+ 
+ const manifest = require("./feature.json");
+ const descriptors = require("./patch.js");
+@@ -21,6 +22,7 @@ const {
+ const {
+   applyLinuxComputerUseFeaturePatch,
+   applyLinuxComputerUseHostPlatformPatch,
++  applyLinuxNativeDesktopAppsHandlerPatch,
+   matchesLinuxComputerUseHostPlatformContract,
+ } = require("../../scripts/patches/impl/computer-use.js");
+ 
+@@ -47,13 +49,34 @@ test("computer-use-linux is opt-in and owns the current Linux descriptors", () =
+   );
+   const visibility = descriptors.find(({ id }) => id === "native-settings-visibility");
+   assert.equal(visibility.pattern.test("app-initial-3e128f859aa3.js"), true);
+-  assert.equal(visibility.pattern.test("app-primary-72206882651c.js"), false);
++  assert.equal(visibility.pattern.test("app-primary-72206882651c.js"), true);
++  assert.equal(visibility.assetMatch(
++    "function f(p,h,r){if(h.length===0&&!r)return p;let s=new Set(h);return p.filter(e=>(!r||!x(e.plugin.id))&&!s.has(e.plugin.id))}",
++  ), true);
++  assert.equal(visibility.assetMatch("function unrelated(){return true}"), false);
+   const hostPlatform = descriptors.find(({ id }) => id === "host-platform");
+   assert.equal(hostPlatform.pattern.test("app-initial-currentHash.js"), true);
+   assert.equal(hostPlatform.pattern.test("app-shared-oldHash.js"), true);
+   assert.equal(hostPlatform.pattern.test("app-initial-currentHash.css"), false);
+ });
+ 
++test("current Linux handler table restores desktop apps and icons without changing adjacent handlers", async () => {
++  const source = '"use strict";const cp=require("node:child_process"),fs=require("node:fs"),os=require("node:os"),path=require("node:path");const handlers={"set-remote-wsl-connections-enabled":async(e)=>({enabled:e})};';
++  const patched = applyLinuxNativeDesktopAppsHandlerPatch(source);
++  assert.notEqual(patched, source);
++  assert.equal(applyLinuxNativeDesktopAppsHandlerPatch(patched), patched);
++  const handlers = vm.runInNewContext(patched +
++    ';codexLinuxNativeDesktopApps=async()=>({apps:["linux-app"]});' +
++    'codexLinuxNativeDesktopAppIcon=async(e)=>({iconSmall:e.appPath});handlers',
++  { require: () => ({}) });
++  assert.equal((await handlers["native-desktop-apps"]()).apps[0], "linux-app");
++  assert.equal((await handlers["computer-use-native-desktop-app-icon"]({ appPath: "icon" })).iconSmall, "icon");
++  assert.equal((await handlers["set-remote-wsl-connections-enabled"](true)).enabled, true);
++  for (const changed of [source.replace("set-remote-wsl-connections-enabled", "changed-handler"), source + source]) {
++    assert.equal(applyLinuxNativeDesktopAppsHandlerPatch(changed), changed);
++  }
++});
++
+ test("computer-use-linux staging consumes release artifacts without invoking Cargo", () => {
+   const stage = fs.readFileSync(path.join(__dirname, "stage.sh"), "utf8");
+   assert.doesNotMatch(stage, /cargo\s+(?:build|install)/);
+diff --git a/linux-features/computer-use-linux/unified.js b/linux-features/computer-use-linux/unified.js
+index ab0a34e1..1bc04255 100644
+--- a/linux-features/computer-use-linux/unified.js
++++ b/linux-features/computer-use-linux/unified.js
+@@ -48,8 +48,9 @@ function lifecycleContract(source, builder, syncSource) {
+   "expected one thread configuration builder call");
+   const resumeOwner = enclosingFunction(source, resume.index);
+   uniqueMatch(source.slice(resumeOwner.start, resumeOwner.end), new RegExp(
+-    `(?<cached>${ID})=${ID}\\.browserUseTinysky\\?${ID}:null,${escapeRegExp(resume.groups.selection)}=` +
+-    `\\k<cached>\\?\\.selection\\?\\?await ${ID}\\(`, "g"),
++    `(?<cached>${ID})=${ID}\\.browserUseTinysky\\?${ID}:null,` +
++    `(?:${ID}=${ID}\\?await ${ID}\\.getAuthenticatedPrincipal\\(\\)\\.catch\\(\\(\\)=>null\\):null,)?` +
++    `${escapeRegExp(resume.groups.selection)}=\\k<cached>\\?\\.selection\\?\\?await ${ID}\\(`, "g"),
+   "expected thread configuration to reuse the cached selection");
+   if (sync.groups.context != null && sync.groups.selection !== cached.groups.selection) {
+     throw new Error("Linux unified Computer Use contract drift: plugin root receiver is not the cached selection");
+@@ -80,9 +81,9 @@ function freshBuilderRoot(source) {
+ function applyUnifiedComputerUsePatch(source) {
+   // Match the current selector, including variable relationships. Both pristine
+   // and patched forms must have exactly one owner; drift must abort the build.
+-  const pattern = /(?<native>[\w$]+)=(?<ready>[\w$]+)&&(?<runtime>[\w$]+)\.platform===`darwin`&&(?<features>[\w$]+)\.computerUse&&(?<legacy>[\w$]+)\.enabled&&\k<legacy>\.paths\.serviceAppPath!=null(?<linux>\|\|\k<ready>&&\k<runtime>\.platform===`linux`&&\k<features>\.computerUse&&\k<legacy>\.enabled)?,(?<mode>[\w$]+)=(?<modeLinux>\k<runtime>\.platform===`linux`\?\k<native>:)?(?<modeValue>\k<features>\.computerUse&&\(!\k<features>\.browserUseTinysky\|\|\k<runtime>\.platform!==`darwin`\|\|\k<legacy>\.enabled\))(?=,)/g;
++  const pattern = /(?<native>[\w$]+)=(?<ready>[\w$]+)&&(?<features>[\w$]+)\.computerUse&&(?<legacy>[\w$]+)\.enabled&&\((?<runtime>[\w$]+)\.platform===`win32`\|\|\k<runtime>\.platform===`darwin`&&\k<legacy>\.paths\.serviceAppPath!=null\)(?<linux>\|\|\k<ready>&&\k<runtime>\.platform===`linux`&&\k<features>\.computerUse&&\k<legacy>\.enabled)?,(?<mode>[\w$]+)=(?<modeLinux>\k<runtime>\.platform===`linux`\?\k<native>:)?(?<modeValue>\k<features>\.computerUse&&\(!\k<features>\.browserUseTinysky\|\|\k<runtime>\.platform!==`darwin`\|\|\k<legacy>\.enabled\))(?=,)/g;
+   const matches = [...source.matchAll(pattern)];
+-  const owners = [...source.matchAll(/[\w$]+=[\w$]+&&[\w$]+\.platform===`darwin`&&[\w$]+\.computerUse&&[\w$]+\.enabled&&[\w$]+\.paths\.serviceAppPath/g)];
++  const owners = [...source.matchAll(/[\w$]+=[\w$]+&&[\w$]+\.computerUse&&[\w$]+\.enabled&&\([\w$]+\.platform===`win32`\|\|[\w$]+\.platform===`darwin`&&[\w$]+\.paths\.serviceAppPath/g)];
+   if (matches.length !== 1 || owners.length !== 1 || !source.includes("cuaReplSurfaces:")) {
+     throw new Error("Linux unified Computer Use contract drift: expected one native surface selector");
+   }
+@@ -117,13 +118,20 @@ function applyUnifiedComputerUsePatch(source) {
+   );
+   const currentServices = [...builderSource.matchAll(currentServicePattern)];
+   const patchedServices = [...builderSource.matchAll(patchedServicePattern)];
++  const audioEnvironmentPattern =
++    `(?<audio>\\.\\.\\.${builder.groups.nodeRepl}\\?\\.env\\.SKY_AUDIO_ATTACHMENTS===\`1\`\\?\\{` +
++    `SKY_ENABLE_AUDIO:${surfaces}\\.includes\\(\`computer\`\\)\\?\`1\`:\`0\`,` +
++    `SKY_AUDIO_ATTACHMENTS:${surfaces}\\.includes\\(\`computer\`\\)\\?\`1\`:\`0\`,` +
++    "NODE_REPL_ENABLE_AUDIO:`0`\\}:\\{\\},)";
+   const currentBannerPattern = new RegExp(
+-    `CUA_REPL_ENABLED_SURFACES:${surfaces}\\.join\\(\`,\`\\),\\[(?<constants>[\\w$]+)\\.(?<constant>[\\w$]+)\\]:JSON\\.stringify\\((?<services>[\\w$]+)\\)`,
++    `CUA_REPL_ENABLED_SURFACES:${surfaces}\\.join\\(\`,\`\\),${audioEnvironmentPattern}` +
++      `\\[(?<constants>[\\w$]+)\\.(?<constant>[\\w$]+)\\]:JSON\\.stringify\\((?<services>[\\w$]+)\\)`,
+     "g",
+   );
+   const patchedBannerPattern = new RegExp(
+     `CUA_REPL_ENABLED_SURFACES:${surfaces}\\.join\\(\`,\`\\),CODEX_LINUX_CUA_HOST_SOCKET:process\\.env\\.CODEX_LINUX_CUA_HOST_SOCKET,` +
+       `NODE_REPL_JS_BANNER:\`await import\\("@oai/cua/tinyskyAlt"\\);await\\(await import\\(\\$\\{JSON\\.stringify\\((?<path>[\\w$]+)\\.default\\.join\\((?<pluginRoot>[\\w$]+),\`scripts\`,\`native-client\\.mjs\`\\)\\)\\}\\)\\)\\.installLinuxComputerUse\\(cua\\);\`,` +
++      audioEnvironmentPattern +
+       `\\[(?<constants>[\\w$]+)\\.(?<constant>[\\w$]+)\\]:JSON\\.stringify\\((?<services>[\\w$]+)\\)`,
+     "g",
+   );
+@@ -193,7 +201,7 @@ function applyUnifiedComputerUsePatch(source) {
+       index: match.index,
+       length: match[0].length,
+       replacement:
+-        `${native}=${ready}&&${runtime}.platform===\`darwin\`&&${features}.computerUse&&${legacy}.enabled&&${legacy}.paths.serviceAppPath!=null` +
++        `${native}=${ready}&&${features}.computerUse&&${legacy}.enabled&&(${runtime}.platform===\`win32\`||${runtime}.platform===\`darwin\`&&${legacy}.paths.serviceAppPath!=null)` +
+         `||${ready}&&${runtime}.platform===\`linux\`&&${features}.computerUse&&${legacy}.enabled,` +
+         `${mode}=${runtime}.platform===\`linux\`?${native}:${modeValue}`,
+     },
+@@ -209,6 +217,7 @@ function applyUnifiedComputerUsePatch(source) {
+         `CUA_REPL_ENABLED_SURFACES:${surfaces}.join(\`,\`),` +
+         `CODEX_LINUX_CUA_HOST_SOCKET:process.env.CODEX_LINUX_CUA_HOST_SOCKET,` +
+         `NODE_REPL_JS_BANNER:\`await import("@oai/cua/tinyskyAlt");await(await import(\${JSON.stringify(${pathAlias}.default.join(${builderRoot},\`scripts\`,\`native-client.mjs\`))})).installLinuxComputerUse(cua);\`,` +
++        banner.groups.audio +
+         `[${banner.groups.constants}.${banner.groups.constant}]:JSON.stringify(${banner.groups.services})`,
+     },
+     {
+diff --git a/linux-features/computer-use-linux/unified.test.js b/linux-features/computer-use-linux/unified.test.js
+index db713394..5fe6383c 100644
+--- a/linux-features/computer-use-linux/unified.test.js
++++ b/linux-features/computer-use-linux/unified.test.js
+@@ -6,11 +6,11 @@ const test = require("node:test");
+ const descriptors = require("./patch.js");
+ 
+ // The current selector boundary: unified prerequisites, platform, feature flag,
+-// and the legacy macOS service, followed by independent browser selection.
++// Windows/macOS service availability, followed by independent browser selection.
+ const selector = [
+-  'function select(f,l,t,u){let p=f&&l.platform===`darwin`&&t.computerUse&&u.enabled&&u.paths.serviceAppPath!=null,m=t.computerUse&&(!t.browserUseTinysky||l.platform!==`darwin`||u.enabled),h=[];return f&&t.browser&&h.push(`browser`),p&&h.push(`computer`),{computerUse:m,cuaReplSurfaces:h}}',
++  'function select(f,l,t,u){let p=f&&t.computerUse&&u.enabled&&(l.platform===`win32`||l.platform===`darwin`&&u.paths.serviceAppPath!=null),m=t.computerUse&&(!t.browserUseTinysky||l.platform!==`darwin`||u.enabled),h=[];return f&&t.browser&&h.push(`browser`),p&&h.push(`computer`),{computerUse:m,cuaReplSurfaces:h}}',
+   'async function configure(e){let t=lookup(),i=constants.Kt({codexHome:e.codexHome,localVersion:t.plugin.localVersion,marketplaceName:t.marketplace.name,pluginName:t.plugin.name}),a=path.default.join(i,`.mcp.json`),c={};Object.assign(c,build(e));return e.nodeRepl!=null&&e.surfaces.length>0}',
+-  'function build({browserBackends:b,deferTools:d,surfaces:s,nodeRepl:n}){let l={};return s.includes(`browser`)&&(l.browser=`@oai/browser-desktop/service`),s.includes(`computer`)&&(l.sky=`@oai/sky/service`),{env:{...n?.env,CUA_REPL_ENABLED_SURFACES:s.join(`,`),[constants.Il]:JSON.stringify(l)}}}',
++  'function build({browserBackends:b,deferTools:d,surfaces:s,nodeRepl:n}){let l={};return s.includes(`browser`)&&(l.browser=`@oai/browser-desktop/service`),s.includes(`computer`)&&(l.sky=`@oai/sky/service`),{env:{...n?.env,CUA_REPL_ENABLED_SURFACES:s.join(`,`),...n?.env.SKY_AUDIO_ATTACHMENTS===`1`?{SKY_ENABLE_AUDIO:s.includes(`computer`)?`1`:`0`,SKY_AUDIO_ATTACHMENTS:s.includes(`computer`)?`1`:`0`,NODE_REPL_ENABLE_AUDIO:`0`}:{},[constants.Il]:JSON.stringify(l)}}}',
+   'async function initialize(e){let selection=e.selection,features=selection.desktopFeatureAvailability,backends=selection.browserBackends,surfaces=selection.cuaReplSurfaces,home=selection.codexHome,marketplace=selection.marketplaceName,marketplaces=e.marketplaces,skip=false,node=selection.nodeRepl,enabled=false;enabled=await configure({browserBackends:backends,deferTools:features.deferCuaTools,surfaces:surfaces,codexHome:home,marketplaceName:marketplace,marketplaces:marketplaces,nodeRepl:skip?void 0:node});return {selection:selection,cuaReplEnabled:enabled}}',
+   'async function threadConfig(e){let cached=e.cached,features=e.features,posture=features.browserUseTinysky?cached:null,selection=posture?.selection??await selectForThread(e),node=e.nodeRepl??selection.nodeRepl;return !posture?.cuaReplEnabled?{enabled:false}:build({browserBackends:selection.browserBackends,deferTools:selection.desktopFeatureAvailability.deferCuaTools,surfaces:selection.cuaReplSurfaces,nodeRepl:node})}',
+ ].join("");
+@@ -39,7 +39,7 @@ test("unified prerequisites, native feature flag, and other platforms retain the
+   assert.deepEqual(surfaces(result, "linux", { nativeEnabled: false }), ["browser"]);
+   assert.deepEqual(surfaces(result, "darwin"), ["browser"]);
+   assert.deepEqual(surfaces(result, "darwin", { legacy: true }), ["browser", "computer"]);
+-  assert.deepEqual(surfaces(result, "win32", { legacy: true }), ["browser"]);
++  assert.deepEqual(surfaces(result, "win32", { legacy: true }), ["browser", "computer"]);
+   assert.equal(patch(result), result);
+ });
+ test("unified selector drift and ambiguous owners fail the build", () => {
+@@ -113,7 +113,7 @@ test("unified helper uses a fresh binding across minified parameter and local co
+       process: { env: { CODEX_LINUX_CUA_HOST_SOCKET: "/runtime/cua.sock" } },
+     });
+     const selection = {
+-      browserBackends: ["native"], cuaReplSurfaces: ["computer"], nodeRepl: {},
++      browserBackends: ["native"], cuaReplSurfaces: ["computer"], nodeRepl: { env: {} },
+       desktopFeatureAvailability: { deferCuaTools: true },
+     };
+     const cached = await initialize({ selection });
+@@ -192,7 +192,7 @@ test("unified browser-only thread configuration receives its banner root", async
+     path: { default: path }, constants: { Il: "services", Kt: () => "/trusted-plugin" }, process: { env: {} },
+   });
+   const selection = {
+-    browserBackends: ["native"], cuaReplSurfaces: ["browser"], nodeRepl: {},
++    browserBackends: ["native"], cuaReplSurfaces: ["browser"], nodeRepl: { env: {} },
+     desktopFeatureAvailability: { deferCuaTools: true },
+   };
+   const cached = await initialize({ selection });
+@@ -226,6 +226,48 @@ test("unified propagation rejects missing, ambiguous, or changed builder consume
+ });
+ 
+ 
++test("current audio flags survive native service injection for computer and browser sessions", () => {
++  const build = vm.runInNewContext(`${patch(selector)};build`, {
++    path: { default: path }, constants: { Il: "services" }, process: { env: {} },
++  });
++  for (const surfaces of [["browser"], ["computer"], ["browser", "computer"]]) {
++    for (const audio of ["1", "0", undefined]) {
++      const config = build({ surfaces, nodeRepl: { env: { SKY_AUDIO_ATTACHMENTS: audio, existing: "kept" } } }, "/trusted-plugin");
++      const enabled = surfaces.includes("computer") ? "1" : "0";
++      assert.equal(config.env.SKY_ENABLE_AUDIO, audio === "1" ? enabled : undefined);
++      assert.equal(config.env.SKY_AUDIO_ATTACHMENTS, audio === "1" ? enabled : audio);
++      assert.equal(config.env.NODE_REPL_ENABLE_AUDIO, audio === "1" ? "0" : undefined);
++      assert.equal(config.env.existing, "kept");
++    }
++  }
++});
++
++test("authenticated resume preserves the cached trusted plugin root even when authentication fails", async () => {
++  const source = selector
++    .replace("features=e.features,posture", "features=e.features,connected=e.connected,server=e.appServer,posture")
++    .replace(":null,selection=posture", ":null,principal=connected?await server.getAuthenticatedPrincipal().catch(()=>null):null,selection=posture");
++  assert.notEqual(source, selector);
++  const patched = patch(source);
++  assert.equal(patch(patched), patched);
++  const threadConfig = vm.runInNewContext(`${patched};threadConfig`, {
++    path: { default: path }, constants: { Il: "services" }, process: { env: {} },
++  });
++  for (const fail of [false, true]) {
++    let calls = 0;
++    const config = await threadConfig({
++      connected: true,
++      appServer: { getAuthenticatedPrincipal: async () => { calls += 1; if (fail) throw Error("offline"); return {}; } },
++      features: { browserUseTinysky: true },
++      cached: { cuaReplEnabled: true, selection: {
++        codexLinuxCuaPluginRoot: "/trusted-plugin", cuaReplSurfaces: ["computer"],
++        desktopFeatureAvailability: {}, nodeRepl: { env: {} },
++      } },
++    });
++    assert.equal(calls, 1);
++    assert.equal(JSON.parse(config.env.services).sky, "/trusted-plugin/scripts/native-service.mjs");
++  }
++});
++
+ test("unified builder patch fails closed when its bindings shadow the path module", () => {
+   for (const binding of ["b", "d", "s", "n"]) {
+     const start = selector.indexOf("function build(");
+diff --git a/scripts/patches/impl/computer-use.js b/scripts/patches/impl/computer-use.js
+index b1eb44f6..1d19ba5a 100644
+--- a/scripts/patches/impl/computer-use.js
++++ b/scripts/patches/impl/computer-use.js
+@@ -357,7 +357,10 @@ function applyLinuxNativeDesktopAppsHandlerPatch(currentSource) {
+     return currentSource;
+   }
+ 
+-  if (findHandlerValue(currentSource, "native-desktop-apps") == null) {
++  const nativeHandlerBeforePatch = findHandlerValue(currentSource, "native-desktop-apps");
++  const currentHandlerAnchor = '"set-remote-wsl-connections-enabled":';
++  const hasCurrentHandlerObject = currentSource.split(currentHandlerAnchor).length === 2;
++  if (nativeHandlerBeforePatch == null && !hasCurrentHandlerObject) {
+     if (currentSource.includes("native-desktop-apps") || currentSource.includes("handleVSCodeRequest")) {
+       console.warn(
+         "WARN: Could not find native-desktop-apps handler — skipping Linux native desktop apps patch",
+@@ -383,6 +386,16 @@ function applyLinuxNativeDesktopAppsHandlerPatch(currentSource) {
+     linuxNativeDesktopAppsHelper({ childProcessVar, fsVar, osVar, pathVar }),
+   );
+ 
++  if (nativeHandlerBeforePatch == null) {
++    patchedSource = patchedSource.replace(
++      currentHandlerAnchor,
++      `"computer-use-native-desktop-app-icon":async(e)=>codexLinuxNativeDesktopAppIcon(e),` +
++        `"native-desktop-apps":async()=>codexLinuxNativeDesktopApps(),` +
++        `"set-remote-wsl-connections-enabled":`,
++    );
++    return patchedSource;
++  }
++
+   const nativeHandler = findHandlerValue(patchedSource, "native-desktop-apps");
+   if (nativeHandler == null) {
+     console.warn(

@@ -1,7 +1,7 @@
 # Maintainer: golixp
 pkgname=chatgpt-desktop-wayland
-pkgver=26.1013.40934
-pkgrel=9
+pkgver=26.1021.22027
+pkgrel=1
 pkgdesc="Unofficial ChatGPT desktop with Linux Computer Use on native Wayland"
 arch=('x86_64')
 url='https://github.com/ilysenko/codex-desktop-linux'
@@ -79,20 +79,24 @@ install="$pkgname.install"
 # and the builder's exact commit have passed validation.
 _builder_commit='56fb909e80c22f29f5a310f6243428ec9b9e8347'
 _upstream_repo='https://persistent.oaistatic.com/codex-app-prod/linux/deb'
-_upstream_path='pool/main/c/chatgpt/chatgpt_26.1013.40934_amd64.deb'
-_upstream_sha256='3ca59e7f9a6641b9e2fb9ad680683784b5ab8026ff7418fb212a0ebe5df3a1d7'
-_upstream_size='502087434'
+_upstream_path='pool/main/c/chatgpt/chatgpt_26.1021.22027_amd64.deb'
+_upstream_sha256='eb0831c734f154f93f8ebcf0e17d118da0dea7dc1737dc61a1e71444375bf190'
+_upstream_size='526398010'
 
 source=(
     "builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit=${_builder_commit}"
     "chatgpt_${pkgver}_amd64.deb::${_upstream_repo}/${_upstream_path}"
     'patches-grim-niri.patch'
+    'patches-computer-use-compat.patch'
+    'chatgpt.png'
     'LicenseRef-OpenAI-Terms'
 )
 sha256sums=(
     'SKIP'
     "${_upstream_sha256}"
     '678ccaaa0935b9873d939f7b5057efbc312ec0de7c41c56422b0e5872cfcb960'
+    '1c1063ab2605845d32ffc9e0a3b9388e7bd9d52e626ebdd470c212417ae120c1'
+    '34df726c06bb6ab6f66ee55d653af7c3b272efe56a20e5ba9e436572f5d3445c'
     '7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3'
 )
 
@@ -102,6 +106,9 @@ prepare() {
     # Niri exposes a GNOME-compatible screenshot D-Bus name that fails on
     # multi-output sessions. Use the compositor-native grim route instead.
     patch -Np1 -i "$srcdir/patches-grim-niri.patch"
+    # Backport the current official bundle contracts without changing the
+    # reviewed builder pin or disabling critical patch enforcement.
+    patch -Np1 -i "$srcdir/patches-computer-use-compat.patch"
 
     local deb="$srcdir/chatgpt_${pkgver}_amd64.deb"
     [[ "$(stat -L -c '%s' "$deb")" == "$_upstream_size" ]] || {
@@ -129,9 +136,14 @@ prepare() {
 
 check() {
     cd "$srcdir/builder"
+    # Exercise chat resume against the actual patched app, in addition to the
+    # small upstream fixtures, so bundle changes cannot silently skip coverage.
+    local check_app="$srcdir/check-app"
+    asar extract "$srcdir/packaged-app/resources/app.asar" "$check_app"
     # The desktop exports these identifiers to child processes. Launcher tests
     # use their own app fixtures and must not inherit the running app identity.
-    env -u CODEX_LINUX_APP_ID -u CODEX_LINUX_APP_DISPLAY_NAME node --test \
+    env -u CODEX_LINUX_APP_ID -u CODEX_LINUX_APP_DISPLAY_NAME \
+        CODEX_SIGNED_EXTRACTED_APP="$check_app" node --test \
         linux-features/computer-use-linux/test.js \
         linux-features/computer-use-linux/*.test.js \
         launcher/start.test.js
@@ -163,7 +175,9 @@ package() {
         export DESKTOP_TEMPLATE="$REPO_DIR/packaging/linux/codex-desktop.desktop"
 
         . scripts/lib/package-common.sh
-        ICON_SOURCE="$(resolve_package_icon_source)"
+        # The builder defaults to its Codex community icon, including the
+        # runtime resource. Use the pinned ChatGPT artwork for every copy.
+        ICON_SOURCE="$srcdir/chatgpt.png"
         stage_common_package_files "$pkgdir"
         write_launcher_stub "$pkgdir"
         stage_linux_feature_package_resources "$pkgdir" pacman
@@ -175,6 +189,13 @@ package() {
 
     grep -q '/usr/bin/chatgpt-desktop-wayland %u' \
         "$pkgdir/usr/share/applications/chatgpt-desktop-wayland.desktop"
+    local icon
+    for icon in \
+        "opt/$pkgname/.codex-linux/$pkgname.png" \
+        "opt/$pkgname/resources/icon-chatgpt.png" \
+        "usr/share/icons/hicolor/256x256/apps/$pkgname.png"; do
+        cmp "$srcdir/chatgpt.png" "$pkgdir/$icon" || return 1
+    done
 
     # start.sh honours user flag files for ordinary community builds. This
     # package is deliberately a Wayland variant, so the wrapper supplies a
