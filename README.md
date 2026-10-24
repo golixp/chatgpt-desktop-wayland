@@ -69,10 +69,11 @@ Windows/macOS surface selector, audio environment, authenticated chat resume,
 desktop app handlers and relocated Settings bundle. Critical patch checks
 remain enabled, so future incompatible releases stop before publication.
 
-`chatgpt.png` is the official ChatGPT mark, rendered at 256×256 on white from
-[OpenAI's SVG asset](https://cdn.oaistatic.com/assets/favicon-l4nq08hd.svg).
-It is checked in and checksummed with the recipe, and supplies both the desktop
-menu icon and the app's runtime icon instead of the builder's Codex icon.
+The desktop and runtime/tray icons come directly from
+`usr/lib/chatgpt/resources/icon-chatgpt.png` in the verified official `.deb`.
+The package preserves the original pixels, resolution and transparent rounded
+corners, and registers the desktop icon at its actual size. Each new upstream
+release supplies its own icon, covered by the signed package checksum.
 
 The GitHub workflow in
 `.github/workflows/track-upstream.yml` checks official releases hourly, creates a

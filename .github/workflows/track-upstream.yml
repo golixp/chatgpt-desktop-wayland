@@ -100,7 +100,7 @@ jobs:
           mkdir -p candidate/scripts candidate/.ci
           cp PKGBUILD .SRCINFO chatgpt-desktop-wayland.install \
              LicenseRef-OpenAI-Terms patches-grim-niri.patch \
-             patches-computer-use-compat.patch chatgpt.png upstream.json candidate/
+             patches-computer-use-compat.patch upstream.json candidate/
           cp scripts/recipe_digest.py candidate/scripts/
           if [[ -f .ci/validated.json ]]; then
             cp .ci/validated.json candidate/.ci/
@@ -205,14 +205,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           cp candidate/PKGBUILD candidate/.SRCINFO candidate/patches-grim-niri.patch candidate/upstream.json .
-          cp candidate/patches-computer-use-compat.patch candidate/chatgpt.png .
+          cp candidate/patches-computer-use-compat.patch .
           cp candidate/chatgpt-desktop-wayland.install .
           mkdir -p .ci
           cp candidate/.ci/validated.json .ci/
           git config user.name 'chatgpt-desktop-wayland updater'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add PKGBUILD .SRCINFO upstream.json chatgpt-desktop-wayland.install \
-            patches-grim-niri.patch patches-computer-use-compat.patch chatgpt.png .ci/validated.json
+            patches-grim-niri.patch patches-computer-use-compat.patch .ci/validated.json
           if git diff --cached --quiet; then
             echo 'recipe is already current'
             exit 0
@@ -241,7 +241,7 @@ jobs:
           cd "$aur"
           extra="$(git ls-files | sort -u | comm -23 - <(printf '%s\n' \
             PKGBUILD .SRCINFO chatgpt-desktop-wayland.install LicenseRef-OpenAI-Terms \
-            patches-grim-niri.patch patches-computer-use-compat.patch chatgpt.png upstream.json | sort))"
+            patches-grim-niri.patch patches-computer-use-compat.patch upstream.json | sort))"
           [[ -z "$extra" ]] || {
             printf 'unexpected files already present in AUR checkout:\n%s\n' "$extra" >&2
             exit 1
@@ -252,13 +252,12 @@ jobs:
              "$GITHUB_WORKSPACE"/candidate/LicenseRef-OpenAI-Terms \
              "$GITHUB_WORKSPACE"/candidate/patches-grim-niri.patch \
              "$GITHUB_WORKSPACE"/candidate/patches-computer-use-compat.patch \
-             "$GITHUB_WORKSPACE"/candidate/chatgpt.png \
              "$GITHUB_WORKSPACE"/candidate/upstream.json .
           git config user.name 'chatgpt-desktop-wayland updater'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- PKGBUILD .SRCINFO chatgpt-desktop-wayland.install \
             LicenseRef-OpenAI-Terms patches-grim-niri.patch \
-            patches-computer-use-compat.patch chatgpt.png upstream.json
+            patches-computer-use-compat.patch upstream.json
           if git diff --cached --quiet; then
             echo 'AUR already matches the validated recipe'
             exit 0

@@ -1,7 +1,7 @@
 # Maintainer: golixp
 pkgname=chatgpt-desktop-wayland
 pkgver=26.1021.22027
-pkgrel=1
+pkgrel=2
 pkgdesc="Unofficial ChatGPT desktop with Linux Computer Use on native Wayland"
 arch=('x86_64')
 url='https://github.com/ilysenko/codex-desktop-linux'
@@ -88,7 +88,6 @@ source=(
     "chatgpt_${pkgver}_amd64.deb::${_upstream_repo}/${_upstream_path}"
     'patches-grim-niri.patch'
     'patches-computer-use-compat.patch'
-    'chatgpt.png'
     'LicenseRef-OpenAI-Terms'
 )
 sha256sums=(
@@ -96,7 +95,6 @@ sha256sums=(
     "${_upstream_sha256}"
     '678ccaaa0935b9873d939f7b5057efbc312ec0de7c41c56422b0e5872cfcb960'
     '1c1063ab2605845d32ffc9e0a3b9388e7bd9d52e626ebdd470c212417ae120c1'
-    '34df726c06bb6ab6f66ee55d653af7c3b272efe56a20e5ba9e436572f5d3445c'
     '7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3'
 )
 
@@ -119,6 +117,14 @@ prepare() {
         printf 'unexpected upstream payload SHA256\n' >&2
         return 1
     }
+
+    # Preserve the official desktop artwork before install.sh replaces it
+    # with the builder's community icon. Extract data only, never deb scripts.
+    (
+        set -o pipefail
+        dpkg-deb --fsys-tarfile "$deb" | bsdtar -xOf - \
+            ./usr/lib/chatgpt/resources/icon-chatgpt.png > "$srcdir/chatgpt-upstream.png"
+    )
 
     printf '%s\n' '{"enabled":["computer-use-linux"]}' > linux-features/features.json
     export CODEX_LINUX_FEATURES_CONFIG="$PWD/linux-features/features.json"
@@ -153,13 +159,23 @@ check() {
     # Rust targets here and keep the release link as the executable check.
     cargo check --locked --all-targets -p codex-computer-use-linux
 
-    python - "$srcdir/packaged-app/.codex-linux/build-info.json" "$pkgver" <<'PY'
+    python - "$srcdir/packaged-app/.codex-linux/build-info.json" "$pkgver" \
+        "$srcdir/chatgpt-upstream.png" <<'PY'
 import json
+import struct
 import sys
 
 info = json.load(open(sys.argv[1], encoding="utf-8"))
 assert info["upstreamLinuxPackage"]["version"] == sys.argv[2]
 assert info["linuxFeatures"]["enabled"] == ["computer-use-linux"]
+
+with open(sys.argv[3], "rb") as icon:
+    header = icon.read(26)
+assert header[:8] == b"\x89PNG\r\n\x1a\n"
+assert header[12:16] == b"IHDR"
+width, height = struct.unpack(">II", header[16:24])
+assert width == height and width > 0
+assert header[25] == 6, "the official icon must preserve its RGBA transparency"
 PY
 }
 
@@ -175,9 +191,9 @@ package() {
         export DESKTOP_TEMPLATE="$REPO_DIR/packaging/linux/codex-desktop.desktop"
 
         . scripts/lib/package-common.sh
-        # The builder defaults to its Codex community icon, including the
-        # runtime resource. Use the pinned ChatGPT artwork for every copy.
-        ICON_SOURCE="$srcdir/chatgpt.png"
+        # Use the untouched icon from the verified official package for both
+        # desktop and runtime/tray resources, including its transparent corners.
+        ICON_SOURCE="$srcdir/chatgpt-upstream.png"
         stage_common_package_files "$pkgdir"
         write_launcher_stub "$pkgdir"
         stage_linux_feature_package_resources "$pkgdir" pacman
@@ -189,12 +205,22 @@ package() {
 
     grep -q '/usr/bin/chatgpt-desktop-wayland %u' \
         "$pkgdir/usr/share/applications/chatgpt-desktop-wayland.desktop"
-    local icon
+    # The builder assumes a 256px icon. Register the original PNG under its
+    # actual resolution without resampling or flattening the alpha channel.
+    local icon icon_size icon_dir
+    icon_size="$(python -c 'import struct,sys; print(struct.unpack(">I", open(sys.argv[1], "rb").read(20)[16:20])[0])' \
+        "$srcdir/chatgpt-upstream.png")"
+    icon_dir="usr/share/icons/hicolor/${icon_size}x${icon_size}/apps"
+    if [[ "$icon_size" != 256 ]]; then
+        install -d "$pkgdir/$icon_dir"
+        mv "$pkgdir/usr/share/icons/hicolor/256x256/apps/$pkgname.png" "$pkgdir/$icon_dir/"
+        rmdir "$pkgdir/usr/share/icons/hicolor/256x256/apps" "$pkgdir/usr/share/icons/hicolor/256x256"
+    fi
     for icon in \
         "opt/$pkgname/.codex-linux/$pkgname.png" \
         "opt/$pkgname/resources/icon-chatgpt.png" \
-        "usr/share/icons/hicolor/256x256/apps/$pkgname.png"; do
-        cmp "$srcdir/chatgpt.png" "$pkgdir/$icon" || return 1
+        "$icon_dir/$pkgname.png"; do
+        cmp "$srcdir/chatgpt-upstream.png" "$pkgdir/$icon" || return 1
     done
 
     # start.sh honours user flag files for ordinary community builds. This

@@ -1,7 +1,7 @@
 pkgbase = chatgpt-desktop-wayland
 	pkgdesc = Unofficial ChatGPT desktop with Linux Computer Use on native Wayland
 	pkgver = 26.1021.22027
-	pkgrel = 1
+	pkgrel = 2
 	url = https://github.com/ilysenko/codex-desktop-linux
 	install = chatgpt-desktop-wayland.install
 	arch = x86_64
@@ -73,13 +73,11 @@ pkgbase = chatgpt-desktop-wayland
 	source = chatgpt_26.1021.22027_amd64.deb::https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.1021.22027_amd64.deb
 	source = patches-grim-niri.patch
 	source = patches-computer-use-compat.patch
-	source = chatgpt.png
 	source = LicenseRef-OpenAI-Terms
 	sha256sums = SKIP
 	sha256sums = eb0831c734f154f93f8ebcf0e17d118da0dea7dc1737dc61a1e71444375bf190
 	sha256sums = 678ccaaa0935b9873d939f7b5057efbc312ec0de7c41c56422b0e5872cfcb960
 	sha256sums = 1c1063ab2605845d32ffc9e0a3b9388e7bd9d52e626ebdd470c212417ae120c1
-	sha256sums = 34df726c06bb6ab6f66ee55d653af7c3b272efe56a20e5ba9e436572f5d3445c
 	sha256sums = 7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3
 
 pkgname = chatgpt-desktop-wayland
