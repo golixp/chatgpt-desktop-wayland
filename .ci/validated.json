@@ -1,16 +1,18 @@
 {
   "builder_commit": "56fb909e80c22f29f5a310f6243428ec9b9e8347",
   "files": {
-    ".SRCINFO": "adbb99f394944d40fc6eb7cbecb2c254e4e7a03f1101ddf0a82814e9b6692f78",
+    ".SRCINFO": "33116f9915b24f1afa86db3963f4b094ab69ecf0a44a2a0ae162614265e33433",
     "LicenseRef-OpenAI-Terms": "7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3",
-    "PKGBUILD": "d215c06de2d64c8b7c86b41f0a8ce6c041a95c441c974db06f3900611119b845",
+    "PKGBUILD": "31a60c54fd5a7073d8f35ba3a28e15631deefabc0f54a8002a95448f1bf14857",
     "chatgpt-desktop-wayland.install": "b83104d1800bb49c9975928689f7b3d1c6989bb1a0a077c7139409626b003b21",
+    "chatgpt.png": "34df726c06bb6ab6f66ee55d653af7c3b272efe56a20e5ba9e436572f5d3445c",
+    "patches-computer-use-compat.patch": "1c1063ab2605845d32ffc9e0a3b9388e7bd9d52e626ebdd470c212417ae120c1",
     "patches-grim-niri.patch": "678ccaaa0935b9873d939f7b5057efbc312ec0de7c41c56422b0e5872cfcb960",
-    "upstream.json": "473173b14cfeeaa09bad65665aef0ae9c4aae31ea6b530c64d58a18fa7d1ae75"
+    "upstream.json": "2735cb0221964c2de5f5f10e10c7f8477c40ce97a53a8b58cdc26b9df898e411"
   },
   "pkgname": "chatgpt-desktop-wayland",
-  "pkgrel": "9",
-  "pkgver": "26.1013.40934",
-  "recipe_sha256": "360584fb5e788c1439de864cbd59404b447e8f2feac19071b703ec32b25fe66e",
+  "pkgrel": "1",
+  "pkgver": "26.1021.22027",
+  "recipe_sha256": "015ddc0133f79b7366e2d1657538534f8a763b7f8b1c58f3efc19016a93a9519",
   "schema": 1
 }
