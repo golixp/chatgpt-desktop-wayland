@@ -1,17 +1,43 @@
 {
-  "builder_commit": "56fb909e80c22f29f5a310f6243428ec9b9e8347",
+  "builder_commit": "f9b973bc03ea60fc971bd227948541fe84bce635",
   "files": {
-    ".SRCINFO": "a9bc8f4234667004ea4096c87bb40bad19454bf51123b86a8be9e6d3533f117b",
+    ".SRCINFO": "1aa5a86b1225e089b9f5398878a6e51ef13d77ae3aec26778891c8b242777635",
+    ".github/workflows/track-upstream.yml": "fa1976ca7977f8a03d7692210e7a0a5479587fb17c2eebdcfffe0a2e994ba173",
     "LicenseRef-OpenAI-Terms": "7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3",
-    "PKGBUILD": "2905f7d503be94779420245fdc56e205efda3919cf1ae8323047c9adac7032fe",
+    "PKGBUILD": "5ab40760e62fb4d65cddb71db318fe0a36c75edd09a9527b62fb7b239663fa86",
+    "builder-acorn.LICENSE": "76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7",
+    "builder-acorn.cjs": "fdb08546776ec6228b03e8d02b40d4ab3255bae5f401adba7ff5dad927ac5c9c",
+    "builder-main-process.cjs": "e16a813544bbf0f373109ff24cdee0a72dacb4eed5bbf4a59727ab4b25006db0",
+    "builder-main-process.test.cjs": "f647dad906457a374d3538cb258d06f95be7b3b7d393567da36ecd58d9694dec",
+    "builder-preflight.sh": "148e6c88ed783ac98265a795f7f8eab6f79c4278f450e94227eee6d6c831afba",
     "chatgpt-desktop-wayland.install": "b83104d1800bb49c9975928689f7b3d1c6989bb1a0a077c7139409626b003b21",
-    "patches-computer-use-compat.patch": "1c1063ab2605845d32ffc9e0a3b9388e7bd9d52e626ebdd470c212417ae120c1",
-    "patches-grim-niri.patch": "678ccaaa0935b9873d939f7b5057efbc312ec0de7c41c56422b0e5872cfcb960",
-    "upstream.json": "2735cb0221964c2de5f5f10e10c7f8477c40ce97a53a8b58cdc26b9df898e411"
+    "openai-codex-linux-repository-key.gpg.base64": "767a5692fdefa0945b369e76a973729414a07168d406c0ede6c60b2f854e7f66",
+    "patches-builder-portability.patch": "3732bafc6efd6a2ab3cdbb1f0db4e8d67f918e7124b167cefb99038835158485",
+    "patches-grim-niri.patch": "3a538a300918875b5e9d0567567ace1afb5bd76b8c2a850720be2934b83572fc",
+    "scripts/fetch_upstream_metadata.py": "33a8f4710b0b4d61bdb94ef22906eb23a09c323d3bf1d8dfc8632c8635f67046",
+    "scripts/recipe_digest.py": "676f2bb1305e79b01220ac851059d80e0c5362d346b1a8ff117dd0a4f07cac27",
+    "scripts/track_upstream.py": "5067a8022b363848a260839fbee9076f56e52eab2ddc3f4d97dbb9fc5b03d5e2",
+    "tests/test_preflight.py": "4cad0b3aa06d96c813273ce3732b73e6ada2fa8366ac88455a0931add501b859",
+    "tests/test_recipe_digest.py": "a3f62e7b6316260286b5b22062224fd08dc4ba7e5be18997eff51e269ba8fc45",
+    "upstream.json": "f4f4a5bd817d7ffa227f083323f6928b3c039a389e92ecae25f9bb063ae92faa"
   },
   "pkgname": "chatgpt-desktop-wayland",
-  "pkgrel": "2",
-  "pkgver": "26.1021.22027",
-  "recipe_sha256": "c5e5c5e91ebdc8a2e75174886c27d5a8959dedb8fe3b8a68f7d56fbb8e687abf",
-  "schema": 1
+  "pkgrel": "1",
+  "pkgver": "26.1027.30824",
+  "recipe_files": [
+    "PKGBUILD",
+    ".SRCINFO",
+    "chatgpt-desktop-wayland.install",
+    "LicenseRef-OpenAI-Terms",
+    "patches-grim-niri.patch",
+    "patches-builder-portability.patch",
+    "builder-main-process.cjs",
+    "builder-main-process.test.cjs",
+    "builder-acorn.cjs",
+    "builder-acorn.LICENSE",
+    "builder-preflight.sh",
+    "upstream.json"
+  ],
+  "recipe_sha256": "8b4ee98cc1dfba9a21e2a0104176489b7729b8b4afd2679eaf95662c05d0d204",
+  "schema": 2
 }
