@@ -70,6 +70,7 @@ pkgbase = chatgpt-desktop-wayland
 	noextract = chatgpt_26.1027.30824_amd64.deb
 	options = !debug
 	options = !strip
+	options = !lto
 	source = builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit=f9b973bc03ea60fc971bd227948541fe84bce635
 	source = chatgpt_26.1027.30824_amd64.deb::https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.1027.30824_amd64.deb
 	source = patches-grim-niri.patch

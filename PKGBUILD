@@ -72,7 +72,9 @@ optdepends=(
 provides=('chatgpt-desktop')
 conflicts=('chatgpt-desktop' 'codex-desktop' 'codex-desktop-git' 'codex-desktop-linux' 'openai-codex-desktop')
 replaces=('chatgpt-desktop')
-options=('!debug' '!strip')
+# GCC LTO objects from mimalloc's C build cannot be linked by Rust's LLVM lld.
+# Keep native archives portable across the caller's makepkg defaults.
+options=('!debug' '!strip' '!lto')
 install="$pkgname.install"
 
 # These values are changed by scripts/track_upstream.py after signed metadata

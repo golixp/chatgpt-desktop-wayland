@@ -119,7 +119,9 @@ The package separates the work into four stages:
 2. `build()` compiles the native package's declared binary targets from the
    locked Cargo graph, including the Linux, COSMIC and activity-indicator helpers,
    then stages the official payload with the enabled feature. Newly declared
-   helpers do not require a second target list in this recipe.
+   helpers do not require a second target list in this recipe. The recipe disables
+   makepkg's C/C++ LTO flags: GCC LTO archives from mimalloc cannot be consumed by
+   Rust's LLVM linker. This keeps linking independent of host makepkg defaults.
 3. `check()` runs the feature, patch-engine and launcher regression tests, checks
    native Rust targets and Niri routing tests, and validates resume against the
    packaged application. Small socket-test fixtures use a short temporary path
