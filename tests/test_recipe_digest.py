@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,10 @@ import unittest
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "recipe_digest.py"
 sys.path.insert(0, str(SCRIPT.parent))
 import recipe_digest as recipe
+import track_upstream
+
+ROOT = SCRIPT.parents[1]
+TRACK_SCRIPT = SCRIPT.with_name("track_upstream.py")
 
 
 class RecipeDigestTests(unittest.TestCase):
@@ -124,6 +129,84 @@ class RecipeDigestTests(unittest.TestCase):
     def test_retired_files_are_not_candidate_inputs(self) -> None:
         self.assertTrue(set(recipe.RETIRED_RECIPE_FILES).isdisjoint(recipe.FILES))
         self.assertEqual(len(recipe.FILES), len(set(recipe.FILES)))
+
+
+class TrackUpstreamTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="track-upstream-test-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        # Use the actual current recipe, adapted back to the previously
+        # published release, then run the real tracker CLI forward again.
+        for relative in recipe.RECIPE_FILES:
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / relative, target)
+        self.metadata = json.loads((ROOT / "upstream.json").read_text())
+        self.version = self.metadata["version"]
+        self.assertNotEqual(self.version, "26.1021.22027")
+        pkgbuild = (self.root / "PKGBUILD").read_text()
+        self.builder = track_upstream.current_value(pkgbuild, "_builder_commit")
+        self.original_rel = track_upstream.current_value(pkgbuild, "pkgrel")
+        # The versioned download and noextract fields are materialized in
+        # .SRCINFO, while PKGBUILD's noextract remains a pkgver expansion.
+        for name in ("PKGBUILD", ".SRCINFO"):
+            file = self.root / name
+            source = file.read_text().replace(self.version, "26.1021.22027")
+            if name == "PKGBUILD":
+                source = source.replace(f"pkgrel={self.original_rel}\n", "pkgrel=2\n")
+            else:
+                source = source.replace(f"\tpkgrel = {self.original_rel}\n", "\tpkgrel = 2\n")
+            file.write_text(source)
+        (self.root / "metadata.json").write_text(json.dumps(self.metadata))
+
+    def track(self) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(TRACK_SCRIPT), str(self.root / "metadata.json"),
+             str(self.root / "PKGBUILD"), str(self.root / ".SRCINFO"), self.builder],
+            cwd=self.root, capture_output=True, text=True,
+        )
+
+    def test_release_upgrade_updates_source_noextract_and_resets_pkgrel(self) -> None:
+        result = self.track()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pkgbuild = (self.root / "PKGBUILD").read_text()
+        srcinfo = (self.root / ".SRCINFO").read_text()
+        self.assertEqual(track_upstream.current_value(pkgbuild, "pkgver"), self.version)
+        self.assertEqual(track_upstream.current_value(pkgbuild, "pkgrel"), "1")
+        self.assertIn(f"\tnoextract = chatgpt_{self.version}_amd64.deb\n", srcinfo)
+        self.assertIn(f"\tsource = chatgpt_{self.version}_amd64.deb::", srcinfo)
+        self.assertNotIn("26.1021.22027", srcinfo)
+        expected = (ROOT / ".SRCINFO").read_text().replace(
+            f"\tpkgrel = {self.original_rel}\n", "\tpkgrel = 1\n",
+        )
+        self.assertEqual(srcinfo, expected)
+        before = (pkgbuild, srcinfo)
+        repeated = self.track()
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertIn("changed=false", repeated.stdout)
+        self.assertEqual(before, ((self.root / "PKGBUILD").read_text(), (self.root / ".SRCINFO").read_text()))
+
+    @unittest.skipUnless(shutil.which("makepkg"), "makepkg is available on the Arch build host")
+    def test_upgraded_srcinfo_matches_actual_makepkg_output(self) -> None:
+        result = self.track()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        generated = subprocess.run(
+            ["makepkg", "--printsrcinfo"], cwd=self.root,
+            capture_output=True, text=True,
+        )
+        self.assertEqual(generated.returncode, 0, generated.stderr)
+        self.assertEqual(generated.stdout, (self.root / ".SRCINFO").read_text())
+
+    def test_missing_noextract_rejects_upgrade_without_partial_writes(self) -> None:
+        file = self.root / ".SRCINFO"
+        file.write_text("".join(line for line in file.read_text().splitlines(keepends=True)
+                                if not line.startswith("\tnoextract = ")))
+        before = ((self.root / "PKGBUILD").read_bytes(), file.read_bytes())
+        result = self.track()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("upstream noextract", result.stderr)
+        self.assertEqual(before, ((self.root / "PKGBUILD").read_bytes(), file.read_bytes()))
 
 
 if __name__ == "__main__":

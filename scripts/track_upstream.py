@@ -151,6 +151,9 @@ def main() -> int:
     pkgrel = current_value(updated, "pkgrel")
     srcinfo = replace_single(srcinfo, r"^\tpkgver = .*$", f"\tpkgver = {metadata['version']}", "pkgver")
     srcinfo = replace_single(srcinfo, r"^\tpkgrel = .*$", f"\tpkgrel = {pkgrel}", "pkgrel")
+    # PKGBUILD expands pkgver inside noextract; its generated .SRCINFO entry
+    # must advance with the download name or CI rejects every future update.
+    srcinfo = replace_single(srcinfo, r"^\tnoextract = chatgpt_[^ ]+_amd64\.deb$", f"\tnoextract = chatgpt_{metadata['version']}_amd64.deb", "upstream noextract")
     srcinfo = replace_single(srcinfo, r"^\tsource = builder::git\+https://github\.com/ilysenko/codex-desktop-linux\.git#commit=[0-9a-f]{40}$", f"\tsource = builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit={builder_commit}", "builder source")
     srcinfo = replace_single(srcinfo, r"^\tsource = chatgpt_[^ ]+_amd64\.deb::https://persistent\.oaistatic\.com/codex-app-prod/linux/deb/.+$", f"\tsource = chatgpt_{metadata['version']}_amd64.deb::{REPOSITORY}/{metadata['repository_path']}", "upstream source")
     srcinfo = replace_single(srcinfo, r"^\tsha256sums = [0-9a-f]{64}$", f"\tsha256sums = {metadata['sha256']}", "upstream checksum")
