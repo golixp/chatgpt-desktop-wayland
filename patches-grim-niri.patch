@@ -1,8 +1,21 @@
 diff --git a/computer-use-linux/src/diagnostics.rs b/computer-use-linux/src/diagnostics.rs
-index cda63c88..d562486f 100644
+index 2568173..5e2eba0 100644
 --- a/computer-use-linux/src/diagnostics.rs
 +++ b/computer-use-linux/src/diagnostics.rs
-@@ -127,6 +127,7 @@ pub struct PlatformReport {
+@@ -1,3 +1,4 @@
++use crate::screenshot::{is_niri_desktop, screenshot_backend_order, ScreenshotBackend};
+ use crate::windowing::registry::{
+     self, COSMIC_WAYLAND_BACKEND, GNOME_SHELL_EXTENSION_BACKEND, GNOME_SHELL_INTROSPECT_BACKEND,
+     HYPRLAND_BACKEND, I3_BACKEND, KWIN_BACKEND, LABWC_BACKEND, NIRI_BACKEND, X11_BACKEND,
+@@ -121,6 +122,7 @@ pub struct PlatformReport {
+     pub desktop_session: Option<String>,
+     pub xdg_session_type: Option<String>,
+     pub xdg_current_desktop: Option<String>,
++    pub xdg_session_desktop: Option<String>,
+     pub wayland_display: Option<String>,
+     pub display: Option<String>,
+     pub xauthority: Option<String>,
+@@ -128,6 +130,7 @@ pub struct PlatformReport {
      pub xdg_runtime_dir: Option<String>,
      pub gnome_shell_version: Check,
      pub gnome_screenshot: Check,
@@ -10,18 +23,24 @@ index cda63c88..d562486f 100644
      /// Native X11 display for the root-window screenshot route. Fails on
      /// Wayland sessions, including XWayland, by design.
      pub x11_display: Check,
-@@ -189,8 +190,8 @@ pub struct ReadinessReport {
-     pub can_focus_apps: bool,
-     pub can_focus_windows: bool,
-     pub can_send_development_input: bool,
--    /// A screenshot route was detected (GNOME Shell, an XDG Screenshot portal
--    /// that exports its Screenshot method, or the gnome-screenshot fallback).
-+    /// A screenshot route was detected (GNOME Shell, an XDG Screenshot portal,
-+    /// wlroots `grim`, or the gnome-screenshot fallback).
-     /// Detection only: no test capture is taken.
-     pub can_capture_screenshots: bool,
-     pub recommended_next_step: String,
-@@ -741,6 +742,7 @@ fn platform_report() -> PlatformReport {
+@@ -214,7 +217,7 @@ pub enum ScreenshotCaptureStatus {
+     Failed,
+ }
+ 
+-const SCREENSHOT_UNAVAILABLE: &str = "No screenshot route was detected: GNOME Shell is absent, the XDG portal does not export org.freedesktop.portal.Screenshot, this is not a native X11 session, and gnome-screenshot is not installed. get_app_state and screenshot return no image; element-aware actions from the accessibility tree still work.";
++const SCREENSHOT_UNAVAILABLE: &str = "No screenshot route was detected: GNOME Shell is absent, the XDG portal does not export org.freedesktop.portal.Screenshot, this is not a native X11 session, and neither grim nor gnome-screenshot is installed. get_app_state and screenshot return no image; element-aware actions from the accessibility tree still work.";
+ const SCREENSHOT_UNVERIFIED: &str = "Screenshot routes were detected, but capture is unverified. Doctor does not take a screenshot or check screenshot consent. GNOME Shell can reject callers, and a portal may require consent for the caller's app ID. Call screenshot or get_app_state to verify capture.";
+ const SCREENSHOT_MISSING_GNOME_FALLBACK: &str = "gnome-screenshot is not installed. On GNOME it provides a fallback when Shell or portal calls are denied; install it or inspect the desktop portal logs and screenshot permissions for the actual caller.";
+ const SCREENSHOT_FAILED: &str = "Screenshot capture failed for this request. Inspect screenshot_error for the full backend errors; accessibility-tree actions still work.";
+@@ -825,6 +828,7 @@ fn platform_report() -> PlatformReport {
+         desktop_session: env_var("DESKTOP_SESSION"),
+         xdg_session_type: env_var("XDG_SESSION_TYPE"),
+         xdg_current_desktop: env_var("XDG_CURRENT_DESKTOP"),
++        xdg_session_desktop: env_var("XDG_SESSION_DESKTOP"),
+         wayland_display: env_var("WAYLAND_DISPLAY"),
+         display: env_var("DISPLAY"),
+         xauthority: env_var("XAUTHORITY"),
+@@ -832,6 +836,7 @@ fn platform_report() -> PlatformReport {
          xdg_runtime_dir: xdg_runtime_dir().map(|path| path.display().to_string()),
          gnome_shell_version: command_check("gnome-shell", &["--version"]),
          gnome_screenshot: command_check("gnome-screenshot", &["--version"]),
@@ -29,34 +48,71 @@ index cda63c88..d562486f 100644
          x11_display: x11_display_check(),
      }
  }
-@@ -903,12 +905,24 @@ fn screenshot_backends(
+@@ -1015,24 +1020,28 @@ fn screenshot_backends(
+     portals: &PortalReport,
      windowing: &WindowingReport,
  ) -> Vec<String> {
-     let mut backends = Vec::new();
+-    let mut backends = Vec::new();
 -    if platform.gnome_shell_version.ok {
-+    let niri_session = platform
-+        .xdg_current_desktop
-+        .as_deref()
-+        .is_some_and(|desktop| desktop.split(':').any(|value| value.eq_ignore_ascii_case("niri")));
-+    // Niri's GNOME-compatible D-Bus route is single-output only; prefer the
-+    // compositor-native multi-output path whenever grim is available.
-+    if niri_session && platform.grim.ok {
-+        backends.push("grim".to_string());
-+    }
-+    if !niri_session && platform.gnome_shell_version.ok {
-         backends.push("gnome_shell".to_string());
-     }
+-        backends.push("gnome_shell".to_string());
+-    }
 -    if windowing.codex_gnome_shell_extension_screenshot.ok {
-+    if !niri_session && windowing.codex_gnome_shell_extension_screenshot.ok {
-         backends.push("gnome_shell_extension".to_string());
-     }
-+    if !niri_session && platform.grim.ok {
-+        backends.push("grim".to_string());
-+    }
-     if portals.screenshot.ok {
-         backends.push("portal".to_string());
-     }
-@@ -1735,6 +1749,7 @@ mod tests {
+-        backends.push("codex_gnome_shell_extension".to_string());
+-    }
+-    if portals.screenshot.ok {
+-        backends.push("portal".to_string());
+-    }
+-    if platform.x11_display.ok {
+-        backends.push("x11".to_string());
+-    }
+-    // Subprocess fallback for background/systemd contexts the DBus paths reject.
+-    if platform.gnome_screenshot.ok {
+-        backends.push("gnome_screenshot".to_string());
+-    }
+-    backends
++    let niri_session = [
++        platform.xdg_current_desktop.as_deref(),
++        platform.xdg_session_desktop.as_deref(),
++        platform.desktop_session.as_deref(),
++    ]
++    .into_iter()
++    .flatten()
++    .any(is_niri_desktop);
++    screenshot_backend_order(niri_session)
++        .iter()
++        .filter(|backend| match backend {
++            ScreenshotBackend::GnomeShell => platform.gnome_shell_version.ok,
++            ScreenshotBackend::GnomeExtension => {
++                windowing.codex_gnome_shell_extension_screenshot.ok
++            }
++            ScreenshotBackend::Grim => platform.grim.ok,
++            ScreenshotBackend::Portal => portals.screenshot.ok,
++            ScreenshotBackend::X11 => platform.x11_display.ok,
++            ScreenshotBackend::GnomeScreenshot => platform.gnome_screenshot.ok,
++        })
++        .map(|backend| backend.diagnostic_name().to_string())
++        .collect()
+ }
+ 
+ fn readiness_report_with_portal_keyboard(
+@@ -1108,7 +1117,7 @@ fn readiness_report_with_portal_keyboard(
+         "Enable a keyboard-capable input backend: enable the XDG RemoteDesktop portal or install wtype on compatible Wayland compositors, install xdotool for X11, or start ydotoold with a socket accessible to this desktop user."
+             .to_string()
+     } else if !screenshot_routes_detected {
+-        "Enable a screenshot route: install an XDG desktop portal backend that implements Screenshot for this desktop, or install gnome-screenshot. Accessibility-tree actions work meanwhile."
++        "Enable a screenshot route: install an XDG desktop portal backend that implements Screenshot for this desktop, or install grim on a screencopy-capable Wayland compositor or gnome-screenshot on GNOME. Accessibility-tree actions work meanwhile."
+             .to_string()
+     } else {
+         "AT-SPI tree support, window targeting, and a Linux input backend are available. Call screenshot or get_app_state to verify screenshot capture."
+@@ -1971,6 +1980,7 @@ pub(crate) mod tests {
+             desktop_session: None,
+             xdg_session_type: Some("wayland".to_string()),
+             xdg_current_desktop: Some("GNOME".to_string()),
++            xdg_session_desktop: None,
+             wayland_display: Some("wayland-0".to_string()),
+             display: Some(":0".to_string()),
+             xauthority: Some("/run/user/1000/Xauthority".to_string()),
+@@ -1978,6 +1988,7 @@ pub(crate) mod tests {
              xdg_runtime_dir: Some("/run/user/1000".to_string()),
              gnome_shell_version: Check::ok("GNOME Shell 46.0"),
              gnome_screenshot: Check::ok("gnome-screenshot 41.0"),
@@ -64,11 +120,68 @@ index cda63c88..d562486f 100644
              x11_display: Check::fail("not a native X11 session"),
          }
      }
+@@ -2723,6 +2734,56 @@ pub(crate) mod tests {
+         assert!(readiness.blockers.is_empty());
+     }
+ 
++    #[test]
++    fn niri_doctor_prefers_grim_and_never_offers_gnome_compatibility() {
++        let mut platform = platform_report();
++        platform.xdg_current_desktop = Some("GNOME:niri".to_string());
++        platform.grim = Check::ok("grim");
++        let mut portals = portal_report(Check::fail("missing"));
++        portals.screenshot = Check::ok("Screenshot method");
++        let mut windowing = windowing_report(true, true);
++        windowing.codex_gnome_shell_extension_screenshot = Check::ok("Screenshot method");
++        assert_eq!(
++            screenshot_backends(&platform, &portals, &windowing),
++            ["grim", "portal", "gnome_screenshot"]
++        );
++        platform.grim = Check::fail("missing");
++        assert_eq!(
++            screenshot_backends(&platform, &portals, &windowing),
++            ["portal", "gnome_screenshot"]
++        );
++        platform.xdg_current_desktop = None;
++        platform.xdg_session_desktop = Some("NIRI".to_string());
++        assert_eq!(
++            screenshot_backends(&platform, &portals, &windowing),
++            ["portal", "gnome_screenshot"]
++        );
++    }
++
++    #[test]
++    fn grim_route_is_detected_but_capture_stays_unverified() {
++        let mut platform = platform_report();
++        platform.desktop_session = Some("niri".to_string());
++        platform.xdg_current_desktop = None;
++        platform.grim = Check::ok("grim");
++        platform.gnome_screenshot = Check::fail("missing");
++        let accessibility = accessibility_report(Check::ok("bus"), Check::ok("true"));
++        let windowing = windowing_report(true, true);
++        let input = input_report(true);
++        let portals = portal_report(Check::fail("missing"));
++        let readiness = readiness_report(&platform, &portals, &accessibility, &windowing, &input);
++        assert_eq!(
++            screenshot_backends(&platform, &portals, &windowing),
++            ["grim"]
++        );
++        assert!(!readiness.can_capture_screenshots);
++        assert_eq!(
++            readiness.screenshot_capture_status,
++            ScreenshotCaptureStatus::Unverified
++        );
++        assert!(readiness.blockers.is_empty());
++    }
++
+     #[test]
+     fn screenshot_route_detection_is_not_capture_verification() {
+         let mut platform = platform_report();
 diff --git a/computer-use-linux/src/screenshot.rs b/computer-use-linux/src/screenshot.rs
-index f19d3cea..a77e3446 100644
+index 34d431c..09731b4 100644
 --- a/computer-use-linux/src/screenshot.rs
 +++ b/computer-use-linux/src/screenshot.rs
-@@ -146,7 +146,7 @@ impl ScreenshotPayloadOptions {
+@@ -294,24 +294,37 @@ impl ScreenshotPayloadOptions {
  
  /// Environment variable forcing a single capture backend, skipping the
  /// fallback chain. Accepts `gnome-shell`, `gnome-extension`, `portal`, `x11`,
@@ -77,7 +190,8 @@ index f19d3cea..a77e3446 100644
  const SCREENSHOT_BACKEND_ENV: &str = "CODEX_COMPUTER_USE_SCREENSHOT_BACKEND";
  
  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-@@ -154,6 +154,7 @@ enum ScreenshotBackend {
+-enum ScreenshotBackend {
++pub(crate) enum ScreenshotBackend {
      GnomeShell,
      GnomeExtension,
      Portal,
@@ -85,7 +199,21 @@ index f19d3cea..a77e3446 100644
      X11,
      GnomeScreenshot,
  }
-@@ -164,6 +165,7 @@ impl ScreenshotBackend {
+ 
+ impl ScreenshotBackend {
++    pub(crate) fn diagnostic_name(self) -> &'static str {
++        match self {
++            Self::GnomeShell => "gnome_shell",
++            Self::GnomeExtension => "codex_gnome_shell_extension",
++            Self::Grim => "grim",
++            Self::Portal => "portal",
++            Self::X11 => "x11",
++            Self::GnomeScreenshot => "gnome_screenshot",
++        }
++    }
++
+     fn parse(value: &str) -> Option<Self> {
+         match value.trim().to_ascii_lowercase().as_str() {
              "gnome-shell" | "gnome_shell" | "shell" => Some(Self::GnomeShell),
              "gnome-extension" | "gnome_extension" | "extension" => Some(Self::GnomeExtension),
              "portal" | "xdg-portal" | "xdg_portal" => Some(Self::Portal),
@@ -93,7 +221,7 @@ index f19d3cea..a77e3446 100644
              "x11" | "x11-native" | "x11_native" | "xgetimage" => Some(Self::X11),
              "gnome-screenshot" | "gnome_screenshot" => Some(Self::GnomeScreenshot),
              _ => None,
-@@ -175,6 +177,7 @@ impl ScreenshotBackend {
+@@ -323,6 +336,7 @@ impl ScreenshotBackend {
              Self::GnomeShell => capture_with_gnome_shell().await,
              Self::GnomeExtension => capture_with_gnome_extension().await,
              Self::Portal => capture_with_portal().await,
@@ -101,66 +229,94 @@ index f19d3cea..a77e3446 100644
              Self::X11 => capture_with_x11().await,
              Self::GnomeScreenshot => capture_with_gnome_screenshot().await,
          }
-@@ -191,17 +194,26 @@ pub async fn capture_screenshot_raw() -> Result<RawScreenshotCapture> {
+@@ -339,43 +353,50 @@ pub async fn capture_screenshot_raw() -> Result<RawScreenshotCapture> {
          return forced.capture().await;
      }
  
--    // The Shell and portal DBus paths fail for background processes (systemd
+-    // The Shell and portal DBus paths can fail for background processes (systemd
 -    // user services, non-interactive parent shells): GNOME Shell's
--    // DBusSenderChecker rejects unknown bus names, and the portal cancels with
--    // response code 2 when there is no foreground window. `gnome-screenshot`
--    // claims an allowlisted bus name and works regardless, so it is the final
--    // fallback. See issue #20.
+-    // DBusSenderChecker rejects unknown bus names, and a portal consent dialog
+-    // may be denied when the caller is not the focused app. Response code 2
+-    // can also indicate other portal failures. `gnome-screenshot` claims an
+-    // allowlisted bus name, so try it as the final fallback. See issue #20.
 -    let gnome_error = match capture_with_gnome_shell().await {
 -        Ok(capture) => return Ok(capture),
 -        Err(error) => error,
-+    // Niri exposes a compatibility GNOME Shell Screenshot name, but its
-+    // implementation rejects multi-output desktops. Skip those DBus routes in
-+    // Niri and use the wlroots-native `grim` path instead. On other desktops,
-+    // preserve the existing GNOME and portal ordering.
-+    let niri_session = is_niri_session();
-+    let (gnome_error, extension_error) = if niri_session {
-+        (anyhow!("skipped on Niri; use grim for multi-output capture"),
-+         anyhow!("skipped on Niri; use grim for multi-output capture"))
-+    } else {
-+        let gnome_error = match capture_with_gnome_shell().await {
-+            Ok(capture) => return Ok(capture),
-+            Err(error) => error,
-+        };
-+        let extension_error = match capture_with_gnome_extension().await {
-+            Ok(capture) => return Ok(capture),
-+            Err(error) => error,
-+        };
-+        (gnome_error, extension_error)
-     };
+-    };
 -    let extension_error = match capture_with_gnome_extension().await {
-+    let grim_error = match capture_with_grim().await {
-         Ok(capture) => return Ok(capture),
-         Err(error) => error,
-     };
-@@ -224,6 +236,7 @@ pub async fn capture_screenshot_raw() -> Result<RawScreenshotCapture> {
-     Err(anyhow!(
-         "GNOME Shell screenshot failed: {gnome_error}; \
-          GNOME Shell extension screenshot failed: {extension_error}; \
-+         grim screenshot failed: {grim_error}; \
-          XDG portal screenshot failed: {portal_error}; \
-          native X11 screenshot failed: {x11_error}; \
-          gnome-screenshot fallback failed: {cli_error}"
-@@ -261,13 +274,21 @@ fn encode_rgb_png(width: u32, height: u32, rgb: Vec<u8>) -> Result<Vec<u8>> {
-     Ok(out)
- }
+-        Ok(capture) => return Ok(capture),
+-        Err(error) => error,
+-    };
+-    let portal_error = match capture_with_portal().await {
+-        Ok(capture) => return Ok(capture),
+-        Err(error) => error,
+-    };
+-    // Native X11 only, and ahead of gnome-screenshot: gnome-screenshot 41 masks
+-    // everything outside the GDK monitor geometry, which is 1/4 of the frame at
+-    // window-scaling-factor 2 on MATE (issue #155). GetImage has no GDK layer.
+-    let x11_error = match capture_with_x11().await {
+-        Ok(capture) => return Ok(capture),
+-        Err(error) => error,
+-    };
+-    let cli_error = match capture_with_gnome_screenshot().await {
+-        Ok(capture) => return Ok(capture),
+-        Err(error) => error,
+-    };
++    let niri_session = [
++        "XDG_CURRENT_DESKTOP",
++        "XDG_SESSION_DESKTOP",
++        "DESKTOP_SESSION",
++    ]
++    .iter()
++    .filter_map(|name| std::env::var(name).ok())
++    .any(|value| is_niri_desktop(&value));
++    let mut errors = Vec::new();
++    for backend in screenshot_backend_order(niri_session) {
++        match backend.capture().await {
++            Ok(capture) => return Ok(capture),
++            Err(error) => errors.push(format!(
++                "{} screenshot failed: {error:#}",
++                backend.diagnostic_name()
++            )),
++        }
++    }
++    Err(anyhow!(errors.join("; ")))
++}
  
-+fn is_niri_session() -> bool {
-+    ["XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION"]
-+        .iter()
-+        .filter_map(|name| std::env::var(name).ok())
-+        .flat_map(|value| value.split(':').map(str::to_ascii_lowercase).collect::<Vec<_>>())
-+        .any(|value| value == "niri")
+-    Err(anyhow!(
+-        "GNOME Shell screenshot failed: {gnome_error:#}; \
+-         GNOME Shell extension screenshot failed: {extension_error:#}; \
+-         XDG portal screenshot failed: {portal_error:#}; \
+-         native X11 screenshot failed: {x11_error:#}; \
+-         gnome-screenshot fallback failed: {cli_error:#}"
+-    ))
++pub(crate) fn is_niri_desktop(value: &str) -> bool {
++    value
++        .split(':')
++        .any(|part| part.eq_ignore_ascii_case("niri"))
 +}
 +
- fn forced_backend() -> Result<Option<ScreenshotBackend>> {
-     match std::env::var(SCREENSHOT_BACKEND_ENV) {
-         Ok(value) if !value.trim().is_empty() => {
++/// Share the fallback order with doctor. Niri's GNOME-compatible Screenshot
++/// service does not capture multi-output desktops; grim uses its screencopy
++/// protocol directly. Other desktops retain their GNOME routes before grim.
++pub(crate) fn screenshot_backend_order(niri_session: bool) -> &'static [ScreenshotBackend] {
++    use ScreenshotBackend::*;
++    if niri_session {
++        &[Grim, Portal, X11, GnomeScreenshot]
++    } else {
++        &[
++            GnomeShell,
++            GnomeExtension,
++            Grim,
++            Portal,
++            X11,
++            GnomeScreenshot,
++        ]
++    }
+ }
+ 
+ /// `GetImage` on the root window of a native X11 session. Pixels are device
+@@ -415,7 +436,7 @@ fn forced_backend() -> Result<Option<ScreenshotBackend>> {
              ScreenshotBackend::parse(&value).map(Some).ok_or_else(|| {
                  anyhow!(
                      "{SCREENSHOT_BACKEND_ENV}={value:?} is not a recognized backend \
@@ -169,27 +325,20 @@ index f19d3cea..a77e3446 100644
                  )
              })
          }
-@@ -462,6 +483,57 @@ async fn capture_with_portal() -> Result<RawScreenshotCapture> {
+@@ -670,6 +691,42 @@ async fn read_portal_png_as_capture(
  /// Matches the portal timeout: a hung capture must not block the tool forever.
  const GNOME_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(20);
  
-+/// Capture the complete Wayland desktop through wlroots' `grim`. Niri is a
-+/// wlroots compositor and `grim` handles multiple outputs without the
-+/// single-output limitation in Niri's GNOME compatibility interface.
-+const GRIM_TIMEOUT: Duration = Duration::from_secs(20);
-+
++/// Capture all Wayland outputs using the compositor's screencopy protocol.
 +async fn capture_with_grim() -> Result<RawScreenshotCapture> {
 +    let path = temp_png_path("grim");
-+    let filename = path
-+        .to_str()
-+        .context("temporary screenshot path is not valid UTF-8")?;
-+
 +    let mut command = Command::new("grim");
 +    command
-+        .arg(filename)
++        .arg(&path)
 +        .stdin(Stdio::null())
 +        .stdout(Stdio::null())
-+        .stderr(Stdio::null());
++        .stderr(Stdio::null())
++        .kill_on_drop(true);
 +    let mut child = match crate::command_runner::spawn_retrying_busy(&mut command).await {
 +        Ok(child) => child,
 +        Err(error) => {
@@ -197,8 +346,7 @@ index f19d3cea..a77e3446 100644
 +            return Err(error).context("failed to spawn grim");
 +        }
 +    };
-+
-+    let status = match tokio::time::timeout(GRIM_TIMEOUT, child.wait()).await {
++    let status = match tokio::time::timeout(GNOME_SCREENSHOT_TIMEOUT, child.wait()).await {
 +        Ok(Ok(status)) => status,
 +        Ok(Err(error)) => {
 +            cleanup_gnome_requested_path(&path);
@@ -210,28 +358,53 @@ index f19d3cea..a77e3446 100644
 +            bail!("grim timed out");
 +        }
 +    };
-+
 +    if !status.success() {
 +        cleanup_gnome_requested_path(&path);
 +        bail!("grim exited with {status}");
 +    }
-+
-+    read_png_as_capture(
-+        path.clone(),
-+        "grim",
-+        ScreenshotCleanup::DeletePath(path),
-+    )
-+    .await
++    read_png_as_capture(path.clone(), "grim", ScreenshotCleanup::DeletePath(path)).await
 +}
 +
  async fn capture_with_gnome_screenshot() -> Result<RawScreenshotCapture> {
      let path = temp_png_path("gnome-screenshot");
      let filename = path
-@@ -832,6 +904,7 @@ mod tests {
-             ScreenshotBackend::parse("  Portal "),
-             Some(ScreenshotBackend::Portal)
+@@ -1174,9 +1231,39 @@ mod tests {
+             ScreenshotBackend::parse(" X11-Native "),
+             Some(ScreenshotBackend::X11)
          );
-+        assert_eq!(ScreenshotBackend::parse("grim"), Some(ScreenshotBackend::Grim));
-         assert_eq!(
-             ScreenshotBackend::parse("GNOME_SCREENSHOT"),
-             Some(ScreenshotBackend::GnomeScreenshot)
++        assert_eq!(
++            ScreenshotBackend::parse(" Grim "),
++            Some(ScreenshotBackend::Grim)
++        );
+         assert_eq!(ScreenshotBackend::parse("nonsense"), None);
+     }
+ 
++    #[test]
++    fn niri_capture_skips_gnome_compatibility_and_preserves_fallbacks() {
++        use ScreenshotBackend::*;
++        assert_eq!(
++            screenshot_backend_order(true),
++            &[Grim, Portal, X11, GnomeScreenshot]
++        );
++        assert_eq!(
++            screenshot_backend_order(false),
++            &[
++                GnomeShell,
++                GnomeExtension,
++                Grim,
++                Portal,
++                X11,
++                GnomeScreenshot
++            ]
++        );
++        for desktop in ["niri", "NIRI", "GNOME:niri", "niri:Wayland"] {
++            assert!(is_niri_desktop(desktop), "{desktop}");
++        }
++        for desktop in ["", "GNOME", "KDE", "niri-custom", "notniri"] {
++            assert!(!is_niri_desktop(desktop), "{desktop}");
++        }
++    }
++
+     #[test]
+     fn forced_backend_reads_env_override() {
+         // Only this test touches SCREENSHOT_BACKEND_ENV, so no cross-test race.

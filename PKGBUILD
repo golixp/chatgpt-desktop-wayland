@@ -1,7 +1,7 @@
 # Maintainer: golixp
 pkgname=chatgpt-desktop-wayland
-pkgver=26.1021.22027
-pkgrel=2
+pkgver=26.1027.30824
+pkgrel=1
 pkgdesc="Unofficial ChatGPT desktop with Linux Computer Use on native Wayland"
 arch=('x86_64')
 url='https://github.com/ilysenko/codex-desktop-linux'
@@ -77,26 +77,50 @@ install="$pkgname.install"
 
 # These values are changed by scripts/track_upstream.py after signed metadata
 # and the builder's exact commit have passed validation.
-_builder_commit='56fb909e80c22f29f5a310f6243428ec9b9e8347'
+_builder_commit='f9b973bc03ea60fc971bd227948541fe84bce635'
 _upstream_repo='https://persistent.oaistatic.com/codex-app-prod/linux/deb'
-_upstream_path='pool/main/c/chatgpt/chatgpt_26.1021.22027_amd64.deb'
-_upstream_sha256='eb0831c734f154f93f8ebcf0e17d118da0dea7dc1737dc61a1e71444375bf190'
-_upstream_size='526398010'
+_upstream_path='pool/main/c/chatgpt/chatgpt_26.1027.30824_amd64.deb'
+_upstream_sha256='4e139a44f7c917a643f2dd014ad32298dd30aec6d324d323524b190f7667684c'
+_upstream_size='534538410'
 
 source=(
     "builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit=${_builder_commit}"
     "chatgpt_${pkgver}_amd64.deb::${_upstream_repo}/${_upstream_path}"
     'patches-grim-niri.patch'
-    'patches-computer-use-compat.patch'
+    'patches-builder-portability.patch'
+    'builder-main-process.cjs'
+    'builder-main-process.test.cjs'
+    'builder-acorn.cjs'
+    'builder-acorn.LICENSE'
+    'builder-preflight.sh'
     'LicenseRef-OpenAI-Terms'
 )
+# Only the verified data members needed by each stage are extracted explicitly.
+noextract=("chatgpt_${pkgver}_amd64.deb")
 sha256sums=(
     'SKIP'
     "${_upstream_sha256}"
-    '678ccaaa0935b9873d939f7b5057efbc312ec0de7c41c56422b0e5872cfcb960'
-    '1c1063ab2605845d32ffc9e0a3b9388e7bd9d52e626ebdd470c212417ae120c1'
+    '3a538a300918875b5e9d0567567ace1afb5bd76b8c2a850720be2934b83572fc'
+    '3732bafc6efd6a2ab3cdbb1f0db4e8d67f918e7124b167cefb99038835158485'
+    'e16a813544bbf0f373109ff24cdee0a72dacb4eed5bbf4a59727ab4b25006db0'
+    'f647dad906457a374d3538cb258d06f95be7b3b7d393567da36ecd58d9694dec'
+    'fdb08546776ec6228b03e8d02b40d4ab3255bae5f401adba7ff5dad927ac5c9c'
+    '76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7'
+    '148e6c88ed783ac98265a795f7f8eab6f79c4278f450e94227eee6d6c831afba'
     '7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3'
 )
+
+_configure_builder_environment() {
+    export CODEX_LINUX_FEATURES_CONFIG="$srcdir/builder/linux-features/features.json"
+    export CODEX_APP_ID="$pkgname"
+    export CODEX_APP_DISPLAY_NAME='ChatGPT Wayland'
+    export CODEX_INSTALL_DIR="$srcdir/packaged-app"
+    export CODEX_ASAR_BIN="$(command -v asar)"
+    export REBUILD_REPORT_DIR="$startdir/build-diagnostics"
+    # Keep large extraction/repack temporary files on the build filesystem.
+    export TMPDIR="$srcdir/build-tmp"
+    mkdir -p "$TMPDIR" "$REBUILD_REPORT_DIR"
+}
 
 prepare() {
     cd "$srcdir/builder"
@@ -104,9 +128,9 @@ prepare() {
     # Niri exposes a GNOME-compatible screenshot D-Bus name that fails on
     # multi-output sessions. Use the compositor-native grim route instead.
     patch -Np1 -i "$srcdir/patches-grim-niri.patch"
-    # Backport the current official bundle contracts without changing the
-    # reviewed builder pin or disabling critical patch enforcement.
-    patch -Np1 -i "$srcdir/patches-computer-use-compat.patch"
+    patch -Np1 -i "$srcdir/patches-builder-portability.patch"
+    install -m644 "$srcdir/builder-main-process.cjs" scripts/patches/lib/
+    install -m644 "$srcdir/builder-acorn.cjs" scripts/patches/lib/
 
     local deb="$srcdir/chatgpt_${pkgver}_amd64.deb"
     [[ "$(stat -L -c '%s' "$deb")" == "$_upstream_size" ]] || {
@@ -118,45 +142,55 @@ prepare() {
         return 1
     }
 
-    # Preserve the official desktop artwork before install.sh replaces it
-    # with the builder's community icon. Extract data only, never deb scripts.
-    (
-        set -o pipefail
-        dpkg-deb --fsys-tarfile "$deb" | bsdtar -xOf - \
-            ./usr/lib/chatgpt/resources/icon-chatgpt.png > "$srcdir/chatgpt-upstream.png"
-    )
-
     printf '%s\n' '{"enabled":["computer-use-linux"]}' > linux-features/features.json
-    export CODEX_LINUX_FEATURES_CONFIG="$PWD/linux-features/features.json"
-    export CODEX_APP_ID="$pkgname"
-    export CODEX_APP_DISPLAY_NAME='ChatGPT Wayland'
-    export CODEX_INSTALL_DIR="$srcdir/packaged-app"
-    export CODEX_ASAR_BIN="$(command -v asar)"
+    _configure_builder_environment
+    node --test "$srcdir/builder-main-process.test.cjs"
+    bash "$srcdir/builder-preflight.sh" "$PWD" "$deb" "$srcdir" \
+        "$REBUILD_REPORT_DIR" "$srcdir/chatgpt-upstream.png"
+}
 
-    # Build from the pinned builder and locked Cargo graph before install.sh
-    # stages the feature into the official application payload.
-    cargo build --locked --release -p codex-computer-use-linux \
-        --bin codex-computer-use-linux --bin codex-computer-use-cosmic
-    ./install.sh "$deb"
+build() {
+    cd "$srcdir/builder"
+    _configure_builder_environment
+
+    # Build the reviewed package's declared binaries, so adding a native helper
+    # upstream does not require another manually synchronized target list here.
+    cargo build --locked --release -p codex-computer-use-linux --bins
+    ./install.sh "$srcdir/chatgpt_${pkgver}_amd64.deb"
 }
 
 check() {
     cd "$srcdir/builder"
+    _configure_builder_environment
     # Exercise chat resume against the actual patched app, in addition to the
     # small upstream fixtures, so bundle changes cannot silently skip coverage.
     local check_app="$srcdir/check-app"
     asar extract "$srcdir/packaged-app/resources/app.asar" "$check_app"
     # The desktop exports these identifiers to child processes. Launcher tests
     # use their own app fixtures and must not inherit the running app identity.
-    env -u CODEX_LINUX_APP_ID -u CODEX_LINUX_APP_DISPLAY_NAME \
-        CODEX_SIGNED_EXTRACTED_APP="$check_app" node --test \
+    # Host-bridge tests bind Unix sockets, whose complete paths are limited to
+    # roughly 108 bytes. Only these small fixtures use a short temporary path;
+    # application extraction and Cargo output remain on the build filesystem.
+    local test_tmp
+    test_tmp="$(mktemp -d /tmp/cwu.XXXXXXXX)"
+    if ! env -u CODEX_LINUX_APP_ID -u CODEX_LINUX_APP_DISPLAY_NAME \
+        -u CODEX_SIGNED_EXTRACTED_APP TMPDIR="$test_tmp" node --test \
         linux-features/computer-use-linux/test.js \
         linux-features/computer-use-linux/*.test.js \
-        launcher/start.test.js
-    # The upstream binary uses a static mimalloc allocator.  Arch's current
-    # lld orders that archive before the test harness and rejects the test
-    # link, while the release binary built above links correctly.  Check all
-    # Rust targets here and keep the release link as the executable check.
+        scripts/patch-linux-window-ui.test.js \
+        scripts/patches/descriptor.test.js scripts/patches/runner.test.js \
+        scripts/patches/core/quit-confirmation-focus/test.js \
+        launcher/start.test.js; then
+        rm -rf -- "$test_tmp"
+        return 1
+    fi
+    rm -rf -- "$test_tmp"
+    CODEX_SIGNED_EXTRACTED_APP="$check_app" CODEX_TEST_ALREADY_PATCHED=1 node --test \
+        linux-features/computer-use-linux/resume.test.js
+    # The library harness avoids the binary's global mimalloc allocator, and
+    # exercises the shared screenshot/doctor routing without a live desktop.
+    cargo test --locked --release -p codex-computer-use-linux --lib niri_
+    cargo test --locked --release -p codex-computer-use-linux --lib grim_route_is_detected
     cargo check --locked --all-targets -p codex-computer-use-linux
 
     python - "$srcdir/packaged-app/.codex-linux/build-info.json" "$pkgver" \
@@ -263,4 +297,6 @@ SCRIPT
         "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 "$srcdir/LicenseRef-OpenAI-Terms" \
         "$pkgdir/usr/share/licenses/$pkgname/LicenseRef-OpenAI-Terms"
+    install -Dm644 "$srcdir/builder-acorn.LICENSE" \
+        "$pkgdir/usr/share/licenses/$pkgname/acorn-LICENSE"
 }

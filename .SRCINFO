@@ -1,7 +1,7 @@
 pkgbase = chatgpt-desktop-wayland
 	pkgdesc = Unofficial ChatGPT desktop with Linux Computer Use on native Wayland
-	pkgver = 26.1021.22027
-	pkgrel = 2
+	pkgver = 26.1027.30824
+	pkgrel = 1
 	url = https://github.com/ilysenko/codex-desktop-linux
 	install = chatgpt-desktop-wayland.install
 	arch = x86_64
@@ -67,17 +67,28 @@ pkgbase = chatgpt-desktop-wayland
 	conflicts = codex-desktop-linux
 	conflicts = openai-codex-desktop
 	replaces = chatgpt-desktop
+	noextract = chatgpt_26.1027.30824_amd64.deb
 	options = !debug
 	options = !strip
-	source = builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit=56fb909e80c22f29f5a310f6243428ec9b9e8347
-	source = chatgpt_26.1021.22027_amd64.deb::https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.1021.22027_amd64.deb
+	source = builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit=f9b973bc03ea60fc971bd227948541fe84bce635
+	source = chatgpt_26.1027.30824_amd64.deb::https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.1027.30824_amd64.deb
 	source = patches-grim-niri.patch
-	source = patches-computer-use-compat.patch
+	source = patches-builder-portability.patch
+	source = builder-main-process.cjs
+	source = builder-main-process.test.cjs
+	source = builder-acorn.cjs
+	source = builder-acorn.LICENSE
+	source = builder-preflight.sh
 	source = LicenseRef-OpenAI-Terms
 	sha256sums = SKIP
-	sha256sums = eb0831c734f154f93f8ebcf0e17d118da0dea7dc1737dc61a1e71444375bf190
-	sha256sums = 678ccaaa0935b9873d939f7b5057efbc312ec0de7c41c56422b0e5872cfcb960
-	sha256sums = 1c1063ab2605845d32ffc9e0a3b9388e7bd9d52e626ebdd470c212417ae120c1
+	sha256sums = 4e139a44f7c917a643f2dd014ad32298dd30aec6d324d323524b190f7667684c
+	sha256sums = 3a538a300918875b5e9d0567567ace1afb5bd76b8c2a850720be2934b83572fc
+	sha256sums = 3732bafc6efd6a2ab3cdbb1f0db4e8d67f918e7124b167cefb99038835158485
+	sha256sums = e16a813544bbf0f373109ff24cdee0a72dacb4eed5bbf4a59727ab4b25006db0
+	sha256sums = f647dad906457a374d3538cb258d06f95be7b3b7d393567da36ecd58d9694dec
+	sha256sums = fdb08546776ec6228b03e8d02b40d4ab3255bae5f401adba7ff5dad927ac5c9c
+	sha256sums = 76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7
+	sha256sums = 148e6c88ed783ac98265a795f7f8eab6f79c4278f450e94227eee6d6c831afba
 	sha256sums = 7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3
 
 pkgname = chatgpt-desktop-wayland

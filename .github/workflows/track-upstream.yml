@@ -32,6 +32,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Test candidate and validation policy
+        run: python -m unittest discover -s tests -v
+
       - name: Verify signed upstream metadata
         id: upstream
         env:
@@ -97,12 +100,9 @@ jobs:
       - name: Assemble candidate recipe artifact
         run: |
           set -Eeuo pipefail
-          mkdir -p candidate/scripts candidate/.ci
-          cp PKGBUILD .SRCINFO chatgpt-desktop-wayland.install \
-             LicenseRef-OpenAI-Terms patches-grim-niri.patch \
-             patches-computer-use-compat.patch upstream.json candidate/
-          cp scripts/recipe_digest.py candidate/scripts/
+          python scripts/recipe_digest.py --copy-to candidate
           if [[ -f .ci/validated.json ]]; then
+            mkdir -p candidate/.ci
             cp .ci/validated.json candidate/.ci/
           fi
 
@@ -120,6 +120,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Download candidate recipe
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -130,26 +133,37 @@ jobs:
       - name: Install isolated Arch build dependencies
         run: |
           set -Eeuo pipefail
-          mapfile -t runtime_deps < <(
-            sed -n 's/^[[:space:]]*depends = //p' recipe/.SRCINFO
+          mapfile -t package_deps < <(
+            sed -n -E 's/^[[:space:]]*(depends|makedepends|checkdepends) = //p' recipe/.SRCINFO | sort -u
           )
           pacman -Syu --noconfirm --needed \
-            archlinux-keyring asar base-devel curl dpkg git gnupg nodejs python rust \
-            alsa-lib at-spi2-core cairo gdk-pixbuf2 gtk3 hicolor-icon-theme \
-            libcups libdrm libglvnd libnotify libx11 libxcb libxcomposite \
-            libxdamage libxext libxfixes libxkbcommon libxrandr mesa nspr nss \
-            pango xdg-utils ydotool "${runtime_deps[@]}"
+            archlinux-keyring base-devel "${package_deps[@]}"
           useradd --create-home --uid 1000 package-builder
+          mkdir -p recipe/build-diagnostics
+          pacman -Q > recipe/build-diagnostics/packages.txt
           chown -R package-builder:package-builder recipe
 
-      - name: Validate metadata and build the package
+      - name: Validate metadata and preflight upstream compatibility
+        id: preflight
         run: |
           set -Eeuo pipefail
           cd recipe
           generated="$(mktemp)"
           runuser -u package-builder -- makepkg --printsrcinfo > "$generated"
-          cmp --silent "$generated" .SRCINFO
-          runuser -u package-builder -- makepkg --cleanbuild --clean --noconfirm
+          diff -u .SRCINFO "$generated" | tee build-diagnostics/srcinfo.diff
+          # prepare() verifies the package and patches a temporary ASAR copy;
+          # incompatible bundles stop before any native helper compilation.
+          runuser -u package-builder -- makepkg --cleanbuild --nobuild --noconfirm \
+            2>&1 | tee build-diagnostics/prepare.log
+
+      - name: Compile helpers, test, and package the validated candidate
+        id: package
+        run: |
+          set -Eeuo pipefail
+          cd recipe
+          # Reuse precisely the sources that passed prepare(); do not run it twice.
+          runuser -u package-builder -- makepkg --noextract --noconfirm \
+            2>&1 | tee build-diagnostics/build.log
 
       - name: Record validated recipe digest
         run: |
@@ -164,6 +178,33 @@ jobs:
           path: recipe/.ci/validated.json
           include-hidden-files: true
           if-no-files-found: error
+
+      - name: Summarize build stages
+        if: always()
+        env:
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+        run: |
+          {
+            printf '## ChatGPT package validation\n\n'
+            printf '| Stage | Result |\n| --- | --- |\n'
+            printf '| Compatibility preflight | %s |\n' "$PREFLIGHT_OUTCOME"
+            printf '| Native build, tests and packaging | %s |\n\n' "$PACKAGE_OUTCOME"
+            if [[ "$PREFLIGHT_OUTCOME" == failure ]]; then
+              printf 'The candidate was rejected before native compilation. Inspect `build-diagnostics` for the patch contract report and preparation log. Review the pinned builder and adapters before retrying; critical checks remain enabled.\n'
+            elif [[ "$PACKAGE_OUTCOME" == failure ]]; then
+              printf 'Compatibility preflight passed. Inspect `build.log` for the native compiler, runtime-test or packaging failure.\n'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain build diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-diagnostics
+          path: recipe/build-diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
 
   publish:
     needs: [discover, build]
@@ -199,20 +240,20 @@ jobs:
           set -Eeuo pipefail
           git fetch --no-tags origin main
           [[ "$(git rev-parse origin/main)" == "$BASE_SHA" ]]
-          python candidate/scripts/recipe_digest.py --verify candidate/.ci/validated.json
+          python scripts/recipe_digest.py candidate --verify candidate/.ci/validated.json
 
       - name: Commit validated recipe to GitHub
         run: |
           set -Eeuo pipefail
-          cp candidate/PKGBUILD candidate/.SRCINFO candidate/patches-grim-niri.patch candidate/upstream.json .
-          cp candidate/patches-computer-use-compat.patch .
-          cp candidate/chatgpt-desktop-wayland.install .
+          mapfile -t recipe_files < <(python scripts/recipe_digest.py --list-files recipe)
+          mapfile -t retired_files < <(python scripts/recipe_digest.py --list-files retired)
+          python scripts/recipe_digest.py candidate --copy-to . --scope recipe
           mkdir -p .ci
           cp candidate/.ci/validated.json .ci/
           git config user.name 'chatgpt-desktop-wayland updater'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add PKGBUILD .SRCINFO upstream.json chatgpt-desktop-wayland.install \
-            patches-grim-niri.patch patches-computer-use-compat.patch .ci/validated.json
+          git rm --ignore-unmatch -- "${retired_files[@]}"
+          git add -- "${recipe_files[@]}" .ci/validated.json
           if git diff --cached --quiet; then
             echo 'recipe is already current'
             exit 0
@@ -238,26 +279,22 @@ jobs:
 
           aur="$RUNNER_TEMP/aur"
           git clone "ssh://aur@aur.archlinux.org/${PACKAGE_NAME}.git" "$aur"
+          mapfile -t recipe_files < <(python scripts/recipe_digest.py --list-files recipe)
+          mapfile -t retired_files < <(python scripts/recipe_digest.py --list-files retired)
           cd "$aur"
-          extra="$(git ls-files | sort -u | comm -23 - <(printf '%s\n' \
-            PKGBUILD .SRCINFO chatgpt-desktop-wayland.install LicenseRef-OpenAI-Terms \
-            patches-grim-niri.patch patches-computer-use-compat.patch upstream.json | sort))"
+          extra="$(git ls-files | sort -u | comm -23 - <(
+            printf '%s\n' "${recipe_files[@]}" "${retired_files[@]}" | sort -u
+          ))"
           [[ -z "$extra" ]] || {
             printf 'unexpected files already present in AUR checkout:\n%s\n' "$extra" >&2
             exit 1
           }
-          cp "$GITHUB_WORKSPACE"/candidate/PKGBUILD \
-             "$GITHUB_WORKSPACE"/candidate/.SRCINFO \
-             "$GITHUB_WORKSPACE"/candidate/chatgpt-desktop-wayland.install \
-             "$GITHUB_WORKSPACE"/candidate/LicenseRef-OpenAI-Terms \
-             "$GITHUB_WORKSPACE"/candidate/patches-grim-niri.patch \
-             "$GITHUB_WORKSPACE"/candidate/patches-computer-use-compat.patch \
-             "$GITHUB_WORKSPACE"/candidate/upstream.json .
+          python "$GITHUB_WORKSPACE/scripts/recipe_digest.py" \
+            "$GITHUB_WORKSPACE/candidate" --copy-to "$aur" --scope recipe
           git config user.name 'chatgpt-desktop-wayland updater'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- PKGBUILD .SRCINFO chatgpt-desktop-wayland.install \
-            LicenseRef-OpenAI-Terms patches-grim-niri.patch \
-            patches-computer-use-compat.patch upstream.json
+          git rm --ignore-unmatch -- "${retired_files[@]}"
+          git add -- "${recipe_files[@]}"
           if git diff --cached --quiet; then
             echo 'AUR already matches the validated recipe'
             exit 0

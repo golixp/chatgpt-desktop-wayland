@@ -20,3 +20,6 @@ target/
 # Generated Python bytecode
 __pycache__/
 *.pyc
+
+# Structured local/CI build reports (uploaded as workflow artifacts)
+build-diagnostics/
