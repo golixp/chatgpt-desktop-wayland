@@ -1,10 +1,10 @@
 {
   "builder_commit": "f9b973bc03ea60fc971bd227948541fe84bce635",
   "files": {
-    ".SRCINFO": "1aa5a86b1225e089b9f5398878a6e51ef13d77ae3aec26778891c8b242777635",
+    ".SRCINFO": "0af1b212edb322782fc836a713600b12256106e9ab2984687d3af2654f28c61b",
     ".github/workflows/track-upstream.yml": "fa1976ca7977f8a03d7692210e7a0a5479587fb17c2eebdcfffe0a2e994ba173",
     "LicenseRef-OpenAI-Terms": "7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3",
-    "PKGBUILD": "5ab40760e62fb4d65cddb71db318fe0a36c75edd09a9527b62fb7b239663fa86",
+    "PKGBUILD": "ffba3500d9561b46a5e846b1129d10ae41894cf3052b29bd819420f27a0fa807",
     "builder-acorn.LICENSE": "76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7",
     "builder-acorn.cjs": "fdb08546776ec6228b03e8d02b40d4ab3255bae5f401adba7ff5dad927ac5c9c",
     "builder-main-process.cjs": "e16a813544bbf0f373109ff24cdee0a72dacb4eed5bbf4a59727ab4b25006db0",
@@ -19,11 +19,11 @@
     "scripts/track_upstream.py": "5067a8022b363848a260839fbee9076f56e52eab2ddc3f4d97dbb9fc5b03d5e2",
     "tests/test_preflight.py": "4cad0b3aa06d96c813273ce3732b73e6ada2fa8366ac88455a0931add501b859",
     "tests/test_recipe_digest.py": "a3f62e7b6316260286b5b22062224fd08dc4ba7e5be18997eff51e269ba8fc45",
-    "upstream.json": "f4f4a5bd817d7ffa227f083323f6928b3c039a389e92ecae25f9bb063ae92faa"
+    "upstream.json": "abf9f7fa17e0524b8877e8d68f09d93c906818ea31bdb9cd2ca011cfdd9b1c8b"
   },
   "pkgname": "chatgpt-desktop-wayland",
   "pkgrel": "1",
-  "pkgver": "26.1027.30824",
+  "pkgver": "26.1027.51404",
   "recipe_files": [
     "PKGBUILD",
     ".SRCINFO",
@@ -38,6 +38,6 @@
     "builder-preflight.sh",
     "upstream.json"
   ],
-  "recipe_sha256": "8b4ee98cc1dfba9a21e2a0104176489b7729b8b4afd2679eaf95662c05d0d204",
+  "recipe_sha256": "865bc4ba5d4406038acc7e6ef4816a6c17feff2a59bfff06544cbe28996aa887",
   "schema": 2
 }

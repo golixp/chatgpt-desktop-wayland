@@ -1,6 +1,6 @@
 # Maintainer: golixp
 pkgname=chatgpt-desktop-wayland
-pkgver=26.1027.30824
+pkgver=26.1027.51404
 pkgrel=1
 pkgdesc="Unofficial ChatGPT desktop with Linux Computer Use on native Wayland"
 arch=('x86_64')
@@ -81,9 +81,9 @@ install="$pkgname.install"
 # and the builder's exact commit have passed validation.
 _builder_commit='f9b973bc03ea60fc971bd227948541fe84bce635'
 _upstream_repo='https://persistent.oaistatic.com/codex-app-prod/linux/deb'
-_upstream_path='pool/main/c/chatgpt/chatgpt_26.1027.30824_amd64.deb'
-_upstream_sha256='4e139a44f7c917a643f2dd014ad32298dd30aec6d324d323524b190f7667684c'
-_upstream_size='534538410'
+_upstream_path='pool/main/c/chatgpt/chatgpt_26.1027.51404_amd64.deb'
+_upstream_sha256='46f1e22d028698fe9edaefd5847aece07c4509a30d3709e104220719d8c12822'
+_upstream_size='535323606'
 
 source=(
     "builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit=${_builder_commit}"

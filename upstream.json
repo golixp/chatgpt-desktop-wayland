@@ -3,8 +3,8 @@
   "builder_commit": "f9b973bc03ea60fc971bd227948541fe84bce635",
   "package": "chatgpt",
   "repository": "https://persistent.oaistatic.com/codex-app-prod/linux/deb",
-  "repository_path": "pool/main/c/chatgpt/chatgpt_26.1027.30824_amd64.deb",
-  "sha256": "4e139a44f7c917a643f2dd014ad32298dd30aec6d324d323524b190f7667684c",
-  "size": 534538410,
-  "version": "26.1027.30824"
+  "repository_path": "pool/main/c/chatgpt/chatgpt_26.1027.51404_amd64.deb",
+  "sha256": "46f1e22d028698fe9edaefd5847aece07c4509a30d3709e104220719d8c12822",
+  "size": 535323606,
+  "version": "26.1027.51404"
 }
