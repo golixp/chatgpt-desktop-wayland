@@ -169,14 +169,16 @@ check() {
     local check_app="$srcdir/check-app"
     asar extract "$srcdir/packaged-app/resources/app.asar" "$check_app"
     # The desktop exports these identifiers to child processes. Launcher tests
-    # use their own app fixtures and must not inherit the running app identity.
+    # use their own app fixtures and must not inherit the running app identity
+    # or the build's real feature configuration, which overrides fixture files.
     # Host-bridge tests bind Unix sockets, whose complete paths are limited to
     # roughly 108 bytes. Only these small fixtures use a short temporary path;
     # application extraction and Cargo output remain on the build filesystem.
     local test_tmp
     test_tmp="$(mktemp -d /tmp/cwu.XXXXXXXX)"
     if ! env -u CODEX_LINUX_APP_ID -u CODEX_LINUX_APP_DISPLAY_NAME \
-        -u CODEX_SIGNED_EXTRACTED_APP TMPDIR="$test_tmp" node --test \
+        -u CODEX_SIGNED_EXTRACTED_APP -u CODEX_LINUX_FEATURES_CONFIG \
+        TMPDIR="$test_tmp" node --test \
         linux-features/computer-use-linux/test.js \
         linux-features/computer-use-linux/*.test.js \
         scripts/patch-linux-window-ui.test.js \
