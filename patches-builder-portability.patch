@@ -1,5 +1,34 @@
+diff --git a/linux-features/computer-use-linux/current-signed.test.js b/linux-features/computer-use-linux/current-signed.test.js
+index 8b52b102..7e54226f 100644
+--- a/linux-features/computer-use-linux/current-signed.test.js
++++ b/linux-features/computer-use-linux/current-signed.test.js
+@@ -57,11 +57,13 @@ test("every current signed main-process descriptor patches exactly one chunk ide
+   const chunks = signedChunks();
+   for (const descriptor of descriptors.filter(({ phase }) => phase === "main-bundle")) {
+     const changed = [];
++    const failures = [];
+     for (const chunk of chunks) {
+       let patched;
+       try {
+         patched = quietly(() => descriptor.apply(chunk.source));
+-      } catch {
++      } catch (error) {
++        failures.push(`${chunk.name}: ${error.message}`);
+         continue;
+       }
+       if (patched === chunk.source) continue;
+@@ -69,7 +71,8 @@ test("every current signed main-process descriptor patches exactly one chunk ide
+       assert.equal(quietly(() => descriptor.apply(patched)), patched, `${descriptor.id} is not idempotent`);
+       assert.doesNotThrow(() => new vm.Script(patched), `${descriptor.id} produced invalid JavaScript`);
+     }
+-    assert.equal(changed.length, 1, `${descriptor.id} changed ${changed.join(", ") || "no chunk"}`);
++    assert.equal(changed.length, 1,
++      `${descriptor.id} changed ${changed.join(", ") || "no chunk"}\n${failures.join("\n")}`);
+   }
+ });
+ 
 diff --git a/linux-features/computer-use-linux/resume.test.js b/linux-features/computer-use-linux/resume.test.js
-index f4657d6..566c563 100644
+index b8c9ca02..f7bafc8a 100644
 --- a/linux-features/computer-use-linux/resume.test.js
 +++ b/linux-features/computer-use-linux/resume.test.js
 @@ -47,8 +47,10 @@ function signedChunks() {
@@ -15,7 +44,7 @@ index f4657d6..566c563 100644
    const values = chunks.flatMap(({ source }) => [...source.matchAll(
      new RegExp(`[,{]${escapeRegExp(entry[1])}:"(NODE_REPL_[A-Z_]+)"[,}]`, "g"))]);
    assert.equal(values.length, 1);
-@@ -159,7 +161,11 @@ test("official per-thread CUA overrides carry the trusted root when resuming cha
+@@ -158,7 +160,11 @@ test("official per-thread CUA overrides carry the trusted root when resuming cha
    assert.equal(owners.length, 1, "Expected one chunk owning unified Computer Use");
    const source = owners[0].source;
    const patched = applyUnifiedComputerUsePatch(source);
@@ -29,7 +58,7 @@ index f4657d6..566c563 100644
    assert.doesNotThrow(() => new vm.Script(patched));
    const builderStart = patched.search(new RegExp(`function ${IDENT}\\(\\{browserBackends:${IDENT},deferTools:`));
 diff --git a/scripts/lib/linux-features.js b/scripts/lib/linux-features.js
-index 75307c8..866c76b 100644
+index 75307c88..866c76b2 100644
 --- a/scripts/lib/linux-features.js
 +++ b/scripts/lib/linux-features.js
 @@ -639,6 +639,9 @@ function wrapFeaturePatchDescriptor(feature, descriptor, sourcePath, index, feat
@@ -43,7 +72,7 @@ index 75307c8..866c76b 100644
      wrapped.appliesTo = (context) => descriptor.appliesTo(featureContext(context, feature));
    }
 diff --git a/scripts/patch-linux-window-ui.test.js b/scripts/patch-linux-window-ui.test.js
-index 7afd13e..866bfa0 100644
+index 7afd13ef..866bfa06 100644
 --- a/scripts/patch-linux-window-ui.test.js
 +++ b/scripts/patch-linux-window-ui.test.js
 @@ -239,11 +239,11 @@ test("valid raw and constructor feature descriptors keep settings, attribution,
@@ -61,7 +90,7 @@ index 7afd13e..866bfa0 100644
        } }),
      ];
 diff --git a/scripts/patches/core/quit-confirmation-focus/patch.js b/scripts/patches/core/quit-confirmation-focus/patch.js
-index 345bc7a..56b6554 100644
+index 345bc7a0..56b65540 100644
 --- a/scripts/patches/core/quit-confirmation-focus/patch.js
 +++ b/scripts/patches/core/quit-confirmation-focus/patch.js
 @@ -2,6 +2,7 @@
@@ -88,7 +117,7 @@ index 345bc7a..56b6554 100644
        file: path.join(buildDir, name),
        source: fs.readFileSync(path.join(buildDir, name), "utf8"),
 diff --git a/scripts/patches/descriptor.js b/scripts/patches/descriptor.js
-index 537213a..415b294 100644
+index 3ded47bd..9600dc73 100644
 --- a/scripts/patches/descriptor.js
 +++ b/scripts/patches/descriptor.js
 @@ -43,6 +43,13 @@ function assertDescriptorBase(descriptor, phase) {
@@ -106,7 +135,7 @@ index 537213a..415b294 100644
    if (!CI_POLICIES.has(ciPolicy)) {
      throw new Error(`Patch descriptor '${id}' has unsupported ciPolicy '${ciPolicy}'`);
 diff --git a/scripts/patches/descriptor.test.js b/scripts/patches/descriptor.test.js
-index 69d9774..48649e8 100644
+index ccc63055..5ad75cac 100644
 --- a/scripts/patches/descriptor.test.js
 +++ b/scripts/patches/descriptor.test.js
 @@ -158,6 +158,7 @@ test("main-process descriptors patch only the rspack chunk that holds their anch
@@ -125,11 +154,10 @@ index 69d9774..48649e8 100644
            if (!source.includes("ANCHOR")) {
              console.warn("WARN: anchor missing - skipping quiet patch");
              return source;
-@@ -241,3 +243,80 @@ test("main-process chunk misses are not printed once the descriptor applies", ()
-   }
-   assert.deepEqual(printed, []);
+@@ -284,3 +286,79 @@ test("webview descriptors reject empty content needles", () => {
+     /assetNeedles must be non-empty strings/,
+   );
  });
-+
 +
 +test("a clean unrelated no-op cannot mask a broken feature owner", () => {
 +  const { applyMainProcessChunkPatchDescriptors } = require("./engine.js");
@@ -207,7 +235,7 @@ index 69d9774..48649e8 100644
 +  assert.equal(report.patches[0].status, "applied");
 +});
 diff --git a/scripts/patches/engine.js b/scripts/patches/engine.js
-index 5273331..56edfb4 100644
+index 1a9e4522..239f4439 100644
 --- a/scripts/patches/engine.js
 +++ b/scripts/patches/engine.js
 @@ -15,6 +15,7 @@ const {
@@ -218,7 +246,7 @@ index 5273331..56edfb4 100644
    isPatchIntegrityError,
  } = require("./integrity-error.js");
  const {
-@@ -58,6 +59,13 @@ function normalizeDescriptor(descriptor, sourcePath = null, index = 0) {
+@@ -59,6 +60,13 @@ function normalizeDescriptor(descriptor, sourcePath = null, index = 0) {
    if (descriptor.assetMatch != null && typeof descriptor.assetMatch !== "function") {
      throw new Error(`Patch descriptor '${id}' assetMatch must be a function`);
    }
@@ -232,7 +260,7 @@ index 5273331..56edfb4 100644
    const ciPolicy = descriptor.ciPolicy ?? OPTIONAL;
    if (!CI_POLICIES.has(ciPolicy)) {
      throw new Error(
-@@ -379,7 +387,45 @@ function applyMainProcessChunkPatchDescriptors(chunks, descriptors, context, rep
+@@ -380,7 +388,45 @@ function applyMainProcessChunkPatchDescriptors(chunks, descriptors, context, rep
        }
        return { chunk, result, changed: result.error == null && result.value !== chunk.source };
      });
@@ -278,7 +306,7 @@ index 5273331..56edfb4 100644
      if (changed.length > 0) {
        const warnings = changed.flatMap((attempt) => attempt.result.warnings);
        for (const warning of warnings) console.warn(warning);
-@@ -402,15 +448,15 @@ function applyMainProcessChunkPatchDescriptors(chunks, descriptors, context, rep
+@@ -403,15 +449,15 @@ function applyMainProcessChunkPatchDescriptors(chunks, descriptors, context, rep
        continue;
      }
  
@@ -298,10 +326,10 @@ index 5273331..56edfb4 100644
        continue;
      }
 diff --git a/scripts/patches/lib/assets.js b/scripts/patches/lib/assets.js
-index 7a9d046..f3ca224 100644
+index 618e1a56..728d71b8 100644
 --- a/scripts/patches/lib/assets.js
 +++ b/scripts/patches/lib/assets.js
-@@ -11,19 +11,7 @@ function readDirectoryNames(dir) {
+@@ -12,19 +12,7 @@ function readDirectoryNames(dir) {
    return fs.readdirSync(dir);
  }
  
@@ -322,7 +350,7 @@ index 7a9d046..f3ca224 100644
  
  function findIconAsset(extractedDir) {
    const assetsDir = path.join(extractedDir, "webview", "assets");
-@@ -214,7 +202,6 @@ module.exports = {
+@@ -297,7 +285,6 @@ module.exports = {
    findCodexRequestWebviewAsset,
    findIconAsset,
    findImportedAsset,
@@ -331,15 +359,16 @@ index 7a9d046..f3ca224 100644
    findRequiredWebviewAsset,
    patchAssetFiles,
 diff --git a/scripts/patches/lib/javascript-syntax.js b/scripts/patches/lib/javascript-syntax.js
-index ae547ea..40baf4e 100644
+index 30f47300..d1da68d1 100644
 --- a/scripts/patches/lib/javascript-syntax.js
 +++ b/scripts/patches/lib/javascript-syntax.js
-@@ -1,18 +1,17 @@
+@@ -1,19 +1,18 @@
  "use strict";
  
 -const fs = require("node:fs");
  const path = require("node:path");
  const { spawnSync } = require("node:child_process");
+ const vm = require("node:vm");
 +const { findMainProcessChunks } = require("./builder-main-process.cjs");
  const { PatchIntegrityError } = require("../integrity-error.js");
  
@@ -358,7 +387,7 @@ index ae547ea..40baf4e 100644
      const result = spawnSync(process.execPath, ["--check", target], {
        encoding: "utf8",
        timeout: 30_000,
-@@ -24,7 +23,7 @@ function validateMainProcessSyntax(extractedDir) {
+@@ -25,7 +24,7 @@ function validateMainProcessSyntax(extractedDir) {
        // not the complete line or caret, in build/update logs.
        const diagnostic = result.stderr?.split("\n").find((line) => line.startsWith("SyntaxError:"));
        throw new PatchIntegrityError(
@@ -368,7 +397,7 @@ index ae547ea..40baf4e 100644
        );
      }
 diff --git a/scripts/patches/runner.js b/scripts/patches/runner.js
-index 9a871f1..aff3db3 100644
+index 9a871f1c..aff3db3d 100644
 --- a/scripts/patches/runner.js
 +++ b/scripts/patches/runner.js
 @@ -131,7 +131,7 @@ function patchExtractedApp(extractedDir, options = {}) {
@@ -381,7 +410,7 @@ index 9a871f1..aff3db3 100644
      recordUnavailablePhasePatchDescriptors(
        patchDescriptors,
 diff --git a/scripts/patches/runner.test.js b/scripts/patches/runner.test.js
-index 40d6cab..40e539b 100644
+index 40d6cabf..40e539b7 100644
 --- a/scripts/patches/runner.test.js
 +++ b/scripts/patches/runner.test.js
 @@ -177,7 +177,7 @@ test("missing main bundle records enabled feature drift", (t) => {

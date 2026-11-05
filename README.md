@@ -65,9 +65,9 @@ it does not follow the third-party builder's moving `main` branch. Builder
 upgrades require reviewing the local patches and validating a full build first.
 
 The reviewed builder commit
-[`f9b973bc03ea60fc971bd227948541fe84bce635`](https://github.com/ilysenko/codex-desktop-linux/commit/f9b973bc03ea60fc971bd227948541fe84bce635)
-includes the Computer Use and Rspack support for official ChatGPT
-26.1027.30824. The obsolete 26.1021 compatibility backport is removed.
+[`75c00cbaaaf6736c75c70362ab58b79b17488c2c`](https://github.com/ilysenko/codex-desktop-linux/commit/75c00cbaaaf6736c75c70362ab58b79b17488c2c)
+includes the Computer Use audio-environment changes and Rspack main-process and
+webview support for official ChatGPT 26.1029.61003.
 `patches-grim-niri.patch` retains the Niri screenshot adaptation and its
 regression tests against this builder.
 
@@ -99,6 +99,12 @@ therefore does not alone require a new feature patch. Real changes to APIs,
 control flow or feature semantics still require a reviewed adapter and tests;
 this framework does not infer new application behavior or disable critical
 checks to make an incompatible build pass.
+
+Webview descriptors locate code by content in both entry and asynchronous
+chunks, using a shared index refreshed after each patch. Duplicated renderer
+modules are patched in every matching chunk and checked for syntax and
+idempotence. Real-package preflight covers both main-process and webview
+contracts; failures retain the owning chunk and underlying error in the log.
 
 The parser is vendored unchanged as `builder-acorn.cjs` from the official
 [Acorn 8.15.0 tarball](https://registry.npmjs.org/acorn/-/acorn-8.15.0.tgz),

@@ -1,6 +1,6 @@
 # Maintainer: golixp
 pkgname=chatgpt-desktop-wayland
-pkgver=26.1027.51404
+pkgver=26.1029.61003
 pkgrel=1
 pkgdesc="Unofficial ChatGPT desktop with Linux Computer Use on native Wayland"
 arch=('x86_64')
@@ -79,11 +79,11 @@ install="$pkgname.install"
 
 # These values are changed by scripts/track_upstream.py after signed metadata
 # and the builder's exact commit have passed validation.
-_builder_commit='f9b973bc03ea60fc971bd227948541fe84bce635'
+_builder_commit='75c00cbaaaf6736c75c70362ab58b79b17488c2c'
 _upstream_repo='https://persistent.oaistatic.com/codex-app-prod/linux/deb'
-_upstream_path='pool/main/c/chatgpt/chatgpt_26.1027.51404_amd64.deb'
-_upstream_sha256='46f1e22d028698fe9edaefd5847aece07c4509a30d3709e104220719d8c12822'
-_upstream_size='535323606'
+_upstream_path='pool/main/c/chatgpt/chatgpt_26.1029.61003_amd64.deb'
+_upstream_sha256='f3af8afec5d25c228eb6f4dbd9cfde0fea7ca5e4b42aff0145a1ded273d01b2d'
+_upstream_size='558314862'
 
 source=(
     "builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit=${_builder_commit}"
@@ -102,8 +102,8 @@ noextract=("chatgpt_${pkgver}_amd64.deb")
 sha256sums=(
     'SKIP'
     "${_upstream_sha256}"
-    '3a538a300918875b5e9d0567567ace1afb5bd76b8c2a850720be2934b83572fc'
-    '3732bafc6efd6a2ab3cdbb1f0db4e8d67f918e7124b167cefb99038835158485'
+    '6ec25a6d7fbad19e804cdbc67ac616079dae0bf0eea13544bfe306a36ee7c71b'
+    'ea944fdadbcf9a5d012fd224e1bb9aa4b4eece471922e12e5083d741b9e1667e'
     'e16a813544bbf0f373109ff24cdee0a72dacb4eed5bbf4a59727ab4b25006db0'
     'f647dad906457a374d3538cb258d06f95be7b3b7d393567da36ecd58d9694dec'
     'fdb08546776ec6228b03e8d02b40d4ab3255bae5f401adba7ff5dad927ac5c9c'
@@ -180,7 +180,9 @@ check() {
         linux-features/computer-use-linux/test.js \
         linux-features/computer-use-linux/*.test.js \
         scripts/patch-linux-window-ui.test.js \
+        scripts/lib/linux-features.test.js \
         scripts/patches/descriptor.test.js scripts/patches/runner.test.js \
+        scripts/patches/lib/assets.test.js scripts/patches/lib/minified-js.test.js \
         scripts/patches/core/quit-confirmation-focus/test.js \
         launcher/start.test.js; then
         rm -rf -- "$test_tmp"
