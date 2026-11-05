@@ -7,6 +7,10 @@ on:
         description: Rebuild the pinned recipe even when the official version is unchanged
         type: boolean
         default: false
+      upload_package:
+        description: Retain the tested Arch package for local installation
+        type: boolean
+        default: false
   schedule:
     - cron: '17 * * * *'
 
@@ -170,6 +174,19 @@ jobs:
           set -Eeuo pipefail
           cd recipe
           python scripts/recipe_digest.py --output .ci/validated.json
+          sha256sum ./*.pkg.tar.zst > build-diagnostics/package-sha256.txt
+
+      - name: Upload installable package
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: chatgpt-desktop-wayland-package
+          path: |
+            recipe/*.pkg.tar.zst
+            recipe/build-diagnostics/package-sha256.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Upload validated recipe marker
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

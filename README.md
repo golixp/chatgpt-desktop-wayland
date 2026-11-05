@@ -195,3 +195,8 @@ repositories can also have schedules disabled after long inactivity. The
 workflow therefore also supports `workflow_dispatch` with an optional
 `force_build` input to revalidate an unchanged recipe. Every package build
 still verifies the signed metadata and payload hash locally.
+
+For local installation from the same tested CI output, manually dispatch with
+`force_build=true` and `upload_package=true`. The installable `.pkg.tar.zst`
+is retained as `chatgpt-desktop-wayland-package` for three days after the build
+and checks succeed. Scheduled runs do not retain this large artifact.
