@@ -11,8 +11,6 @@ on:
         description: Retain the tested Arch package for local installation
         type: boolean
         default: false
-  schedule:
-    - cron: '17 * * * *'
 
 permissions:
   contents: read

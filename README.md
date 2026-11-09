@@ -60,8 +60,7 @@ permission. A diagnostic command is available inside the package:
 builder commit. `scripts/track_upstream.py` only accepts a newer safe version,
 an exact 64-character payload hash and a 40-character builder commit. It resets
 `pkgrel` for a new app version and increments it for a builder-only change.
-The scheduled updater keeps the builder at the reviewed commit in `PKGBUILD`;
-it does not follow the third-party builder's moving `main` branch. Builder
+The updater uses the reviewed builder commit pinned in `PKGBUILD`. Builder
 upgrades require reviewing the local patches and validating a full build first.
 
 The reviewed builder commit
@@ -175,13 +174,12 @@ Only the full CI build may record a fresh publishable validation marker.
 
 ## CI publishing
 
-The GitHub workflow in
-`.github/workflows/track-upstream.yml` checks official releases hourly, creates a
-candidate recipe, runs compatibility preflight and the subsequent full build in
-a disposable Arch container, and publishes only the validated recipe. AUR
-publishing is disabled until the repository owner explicitly supplies the
-required secret and variable; the GitHub updater is active, but no AUR push has
-been enabled.
+Start **Track official ChatGPT Linux release** manually from GitHub Actions.
+The workflow uses `workflow_dispatch` as its only trigger. Each run checks the
+official release and prepares a candidate recipe. When the candidate needs
+validation, the workflow runs compatibility preflight and a full build in a
+disposable Arch container. It publishes only the validated recipe to GitHub.
+AUR publishing is disabled by default.
 
 For a future deployment, create the AUR package manually, add an SSH key as the
 `AUR_SSH_PRIVATE_KEY` repository secret, add its exact `known_hosts` line as
@@ -190,13 +188,10 @@ For a future deployment, create the AUR package manually, add an SSH key as the
 untrusted build job. It retries AUR synchronization on later runs even when a
 previous publish attempt failed.
 
-GitHub scheduled workflows use UTC and can be delayed during load; public
-repositories can also have schedules disabled after long inactivity. The
-workflow therefore also supports `workflow_dispatch` with an optional
-`force_build` input to revalidate an unchanged recipe. Every package build
-still verifies the signed metadata and payload hash locally.
+Set `force_build=true` to revalidate an unchanged recipe. Every package build
+verifies the signed metadata and payload hash locally.
 
 For local installation from the same tested CI output, manually dispatch with
 `force_build=true` and `upload_package=true`. The installable `.pkg.tar.zst`
 is retained as `chatgpt-desktop-wayland-package` for three days after the build
-and checks succeed. Scheduled runs do not retain this large artifact.
+and checks succeed.
