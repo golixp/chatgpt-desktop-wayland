@@ -1,5 +1,5 @@
 diff --git a/linux-features/computer-use-linux/current-signed.test.js b/linux-features/computer-use-linux/current-signed.test.js
-index 8b52b102..7e54226f 100644
+index 41c18d37..a0e97542 100644
 --- a/linux-features/computer-use-linux/current-signed.test.js
 +++ b/linux-features/computer-use-linux/current-signed.test.js
 @@ -57,11 +57,13 @@ test("every current signed main-process descriptor patches exactly one chunk ide
@@ -72,7 +72,7 @@ index 75307c88..866c76b2 100644
      wrapped.appliesTo = (context) => descriptor.appliesTo(featureContext(context, feature));
    }
 diff --git a/scripts/patch-linux-window-ui.test.js b/scripts/patch-linux-window-ui.test.js
-index 7afd13ef..866bfa06 100644
+index f76b3062..4ad4ee42 100644
 --- a/scripts/patch-linux-window-ui.test.js
 +++ b/scripts/patch-linux-window-ui.test.js
 @@ -239,11 +239,11 @@ test("valid raw and constructor feature descriptors keep settings, attribution,
@@ -89,33 +89,6 @@ index 7afd13ef..866bfa06 100644
          return source.includes('// constructor') ? source : source + '// constructor\\n';
        } }),
      ];
-diff --git a/scripts/patches/core/quit-confirmation-focus/patch.js b/scripts/patches/core/quit-confirmation-focus/patch.js
-index 345bc7a0..56b65540 100644
---- a/scripts/patches/core/quit-confirmation-focus/patch.js
-+++ b/scripts/patches/core/quit-confirmation-focus/patch.js
-@@ -2,6 +2,7 @@
- 
- const fs = require("node:fs");
- const path = require("node:path");
-+const { findMainProcessChunks } = require("../../lib/assets.js");
- 
- const {
-   applyShellEnvironmentStartup,
-@@ -118,10 +119,10 @@ function applyQuitConfirmationFocus(source) {
- }
- 
- function patchRequiredCoreBlockers(extractedDir) {
--  const buildDir = path.join(extractedDir, ".vite", "build");
--  const modules = fs.readdirSync(buildDir)
--    .filter((name) => name.endsWith(".js"))
--    .sort()
-+  const main = findMainProcessChunks(extractedDir);
-+  if (main == null) throw new Error("Expected official main-process modules");
-+  const { buildDir } = main;
-+  const modules = main.chunks
-     .map((name) => ({
-       file: path.join(buildDir, name),
-       source: fs.readFileSync(path.join(buildDir, name), "utf8"),
 diff --git a/scripts/patches/descriptor.js b/scripts/patches/descriptor.js
 index 3ded47bd..9600dc73 100644
 --- a/scripts/patches/descriptor.js
@@ -326,7 +299,7 @@ index 1a9e4522..239f4439 100644
        continue;
      }
 diff --git a/scripts/patches/lib/assets.js b/scripts/patches/lib/assets.js
-index 618e1a56..728d71b8 100644
+index e16af33f..7ab61483 100644
 --- a/scripts/patches/lib/assets.js
 +++ b/scripts/patches/lib/assets.js
 @@ -12,19 +12,7 @@ function readDirectoryNames(dir) {
@@ -350,7 +323,7 @@ index 618e1a56..728d71b8 100644
  
  function findIconAsset(extractedDir) {
    const assetsDir = path.join(extractedDir, "webview", "assets");
-@@ -297,7 +285,6 @@ module.exports = {
+@@ -307,7 +295,6 @@ module.exports = {
    findCodexRequestWebviewAsset,
    findIconAsset,
    findImportedAsset,
@@ -410,19 +383,19 @@ index 9a871f1c..aff3db3d 100644
      recordUnavailablePhasePatchDescriptors(
        patchDescriptors,
 diff --git a/scripts/patches/runner.test.js b/scripts/patches/runner.test.js
-index 40d6cabf..40e539b7 100644
+index 2b606f4b..3dda63d5 100644
 --- a/scripts/patches/runner.test.js
 +++ b/scripts/patches/runner.test.js
-@@ -177,7 +177,7 @@ test("missing main bundle records enabled feature drift", (t) => {
+@@ -188,7 +188,7 @@ test("missing main bundle records enabled feature drift", (t) => {
    );
  });
  
 -test("main-process chunks are the rspack early-bootstrap entry and its numbered chunks", () => {
 +test("main-process discovery includes renamed JavaScript chunks without a bundler filename filter", () => {
-   const { findMainProcessChunks } = require("./lib/assets.js");
    const root = fs.mkdtempSync(path.join(os.tmpdir(), "runner-rspack-chunks-"));
    try {
-@@ -200,6 +200,10 @@ test("main-process chunks are the rspack early-bootstrap entry and its numbered
+     const buildDir = path.join(root, ".vite", "build");
+@@ -210,6 +210,10 @@ test("main-process chunks are the rspack early-bootstrap entry and its numbered
          "early-bootstrap-87-929aa7e5d829f2a8.js",
          "early-bootstrap-916-2f6483d5bfd826f1.js",
          "early-bootstrap.js",
@@ -433,10 +406,25 @@ index 40d6cabf..40e539b7 100644
        ],
      });
      assert.equal(findMainProcessChunks(path.join(root, "missing")), null);
-@@ -207,3 +211,27 @@ test("main-process chunks are the rspack early-bootstrap entry and its numbered
+@@ -217,3 +221,38 @@ test("main-process chunks are the rspack early-bootstrap entry and its numbered
      fs.rmSync(root, { recursive: true, force: true });
    }
  });
++
++
++function currentBundleShape(name = "install") {
++  return "class QuitState{allowQuitWithoutPrompt=!1;" +
++    "canQuitWithoutPrompt(){return this.allowQuitWithoutPrompt}" +
++    "markQuitApproved(){this.allowQuitWithoutPrompt=!0}" +
++    "shouldSkipDrainBeforeQuit(){return!1}}" +
++    `${name}=function({isWindows:a,quitState:b,windows:c,applicationMenuManager:d,` +
++    "ensureWindow:e,hotkeyWindowLifecycleManager:f,globalDictationLifecycleManager:g," +
++    "globalState:h,settingsStore:i,stopCodexMicro:j,flushTracingBeforeQuit:k," +
++    "flushAndDisposeContext:l,disposables:m,appEvent:n,onAppEntrySource:o," +
++    "canAttributeAppReactivation:p}){let q=!1,r=!1;" +
++    "u.app.on(\"before-quit\",e=>{privacy()?(r=!0,c.markAppQuitting()):e.preventDefault()})," +
++    "u.app.on(\"will-quit\",e=>{q=!0})}";
++}
 +
 +
 +test("core repairs and syntax validation follow a relocated manifest entry and nested chunks", (t) => {
@@ -445,19 +433,15 @@ index 40d6cabf..40e539b7 100644
 +  const buildDir = path.join(root, "release/desktop");
 +  fs.mkdirSync(path.join(buildDir, "chunks"), { recursive: true });
 +  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ main: "release/desktop/boot.cjs" }));
-+  fs.writeFileSync(path.join(buildDir, "boot.cjs"), "require('./chunks/renamed-quit.js');require('./chunks/renamed-shell.js');throw Error('must never execute')");
++  fs.writeFileSync(path.join(buildDir, "boot.cjs"), "require('./chunks/renamed-quit.js');throw Error('must never execute')");
 +  const main = path.join(buildDir, "chunks/renamed-quit.js");
-+  fs.writeFileSync(main, officialQuitBundle);
-+  const shell = path.join(buildDir, "chunks/renamed-shell.js");
-+  fs.writeFileSync(shell, "async function load(a,b){let start=Date.now();e.app.isPackaged||clean();" +
-+    "let abort=new AbortController;log(\"Failed to load shell env\",{resultSource:\"load\"})}");
++  fs.writeFileSync(main, currentBundleShape());
 +  const report = createPatchReport();
-+  patchExtractedApp(root, { report, featuresConfigPath: emptyConfig, linuxTarget: fedoraKde });
++  patchExtractedApp(root, { report, featuresConfigPath: emptyConfig });
 +  assert.equal(report.patches[0].status, "applied");
-+  assert.match(fs.readFileSync(main, "utf8"), /codexLinuxQuitDialogParent/);
-+  assert.match(fs.readFileSync(shell, "utf8"), /await new Promise\(setImmediate\)/);
++  assert.equal(findQuitLifecycleContract(fs.readFileSync(main, "utf8")).approvalConsumed, true);
 +  fs.appendFileSync(path.join(buildDir, "boot.cjs"), ";require('./chunks/renamed-bad.js')");
 +  fs.writeFileSync(path.join(buildDir, "chunks/renamed-bad.js"), "function invalid({a},a){}");
-+  assert.throws(() => patchExtractedApp(root, { featuresConfigPath: emptyConfig, linuxTarget: fedoraKde }),
++  assert.throws(() => patchExtractedApp(root, { featuresConfigPath: emptyConfig }),
 +    /(?:JavaScript syntax validation failed|cannot parse).*renamed-bad.js/);
 +});

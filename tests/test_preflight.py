@@ -87,6 +87,16 @@ test('patched contract', () => {
   assert.notEqual(process.env.TEST_PREFLIGHT_FAIL_PHASE, 'patched_contracts');
 });
 """)
+        self.write_builder("linux-features/disable-pets/test.js", """
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+test('pet contract runs before and after patching', () => {
+  assert.equal(fs.existsSync(path.join(process.env.CODEX_SIGNED_EXTRACTED_APP, 'patched')),
+    process.env.CODEX_TEST_ALREADY_PATCHED === '1');
+});
+""")
         self.command("dpkg-deb", """
 import os
 from pathlib import Path

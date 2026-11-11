@@ -1,6 +1,6 @@
 # Maintainer: golixp
 pkgname=chatgpt-desktop-wayland
-pkgver=26.1029.61003
+pkgver=26.1106.51428
 pkgrel=1
 pkgdesc="Unofficial ChatGPT desktop with Linux Computer Use on native Wayland"
 arch=('x86_64')
@@ -79,17 +79,18 @@ install="$pkgname.install"
 
 # These values are changed by scripts/track_upstream.py after signed metadata
 # and the builder's exact commit have passed validation.
-_builder_commit='75c00cbaaaf6736c75c70362ab58b79b17488c2c'
+_builder_commit='61b5e818dc0b46ee531994d8bbb09d81e9581843'
 _upstream_repo='https://persistent.oaistatic.com/codex-app-prod/linux/deb'
-_upstream_path='pool/main/c/chatgpt/chatgpt_26.1029.61003_amd64.deb'
-_upstream_sha256='f3af8afec5d25c228eb6f4dbd9cfde0fea7ca5e4b42aff0145a1ded273d01b2d'
-_upstream_size='558314862'
+_upstream_path='pool/main/c/chatgpt/chatgpt_26.1106.51428_amd64.deb'
+_upstream_sha256='8356a7821930b135b741347faccbc43e1692b4424c3eab710a9af56c0bebb135'
+_upstream_size='563945442'
 
 source=(
     "builder::git+https://github.com/ilysenko/codex-desktop-linux.git#commit=${_builder_commit}"
     "chatgpt_${pkgver}_amd64.deb::${_upstream_repo}/${_upstream_path}"
     'patches-grim-niri.patch'
     'patches-builder-portability.patch'
+    'patches-disable-pets.patch'
     'builder-main-process.cjs'
     'builder-main-process.test.cjs'
     'builder-acorn.cjs'
@@ -102,13 +103,14 @@ noextract=("chatgpt_${pkgver}_amd64.deb")
 sha256sums=(
     'SKIP'
     "${_upstream_sha256}"
-    '6ec25a6d7fbad19e804cdbc67ac616079dae0bf0eea13544bfe306a36ee7c71b'
-    'ea944fdadbcf9a5d012fd224e1bb9aa4b4eece471922e12e5083d741b9e1667e'
+    'da19da57e879a03ce1cba13fc8fd37c0059283e83ae1d42b8a33137029798f56'
+    'e9736ece75e6bbb7845ad6abd93c61c96cfd63b6651206866e92bdf2bfc7ceb9'
+    '259932074ca31b0da7f5c2776b6d2cfd73b5255db80674f960b305ee25e6b883'
     'e16a813544bbf0f373109ff24cdee0a72dacb4eed5bbf4a59727ab4b25006db0'
     'f647dad906457a374d3538cb258d06f95be7b3b7d393567da36ecd58d9694dec'
     'fdb08546776ec6228b03e8d02b40d4ab3255bae5f401adba7ff5dad927ac5c9c'
     '76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7'
-    '148e6c88ed783ac98265a795f7f8eab6f79c4278f450e94227eee6d6c831afba'
+    'aacadc39618373b9306e680cb3745a0ec369f84a53382313d5f8321548e50d66'
     '7abd10bce8b40b17ff0902c0fa0750fcea831fd5afe67f8b4c02e4aeb8505ed3'
 )
 
@@ -131,6 +133,7 @@ prepare() {
     # multi-output sessions. Use the compositor-native grim route instead.
     patch -Np1 -i "$srcdir/patches-grim-niri.patch"
     patch -Np1 -i "$srcdir/patches-builder-portability.patch"
+    patch -Np1 -i "$srcdir/patches-disable-pets.patch"
     install -m644 "$srcdir/builder-main-process.cjs" scripts/patches/lib/
     install -m644 "$srcdir/builder-acorn.cjs" scripts/patches/lib/
 
@@ -144,7 +147,7 @@ prepare() {
         return 1
     }
 
-    printf '%s\n' '{"enabled":["computer-use-linux"]}' > linux-features/features.json
+    printf '%s\n' '{"enabled":["computer-use-linux","disable-pets"]}' > linux-features/features.json
     _configure_builder_environment
     node --test "$srcdir/builder-main-process.test.cjs"
     bash "$srcdir/builder-preflight.sh" "$PWD" "$deb" "$srcdir" \
@@ -181,6 +184,7 @@ check() {
         TMPDIR="$test_tmp" node --test \
         linux-features/computer-use-linux/test.js \
         linux-features/computer-use-linux/*.test.js \
+        linux-features/disable-pets/test.js \
         scripts/patch-linux-window-ui.test.js \
         scripts/lib/linux-features.test.js \
         scripts/patches/descriptor.test.js scripts/patches/runner.test.js \
@@ -192,7 +196,8 @@ check() {
     fi
     rm -rf -- "$test_tmp"
     CODEX_SIGNED_EXTRACTED_APP="$check_app" CODEX_TEST_ALREADY_PATCHED=1 node --test \
-        linux-features/computer-use-linux/resume.test.js
+        linux-features/computer-use-linux/resume.test.js \
+        linux-features/disable-pets/test.js
     # The library harness avoids the binary's global mimalloc allocator, and
     # exercises the shared screenshot/doctor routing without a live desktop.
     cargo test --locked --release -p codex-computer-use-linux --lib niri_
@@ -207,7 +212,7 @@ import sys
 
 info = json.load(open(sys.argv[1], encoding="utf-8"))
 assert info["upstreamLinuxPackage"]["version"] == sys.argv[2]
-assert info["linuxFeatures"]["enabled"] == ["computer-use-linux"]
+assert info["linuxFeatures"]["enabled"] == ["computer-use-linux", "disable-pets"]
 
 with open(sys.argv[3], "rb") as icon:
     header = icon.read(26)

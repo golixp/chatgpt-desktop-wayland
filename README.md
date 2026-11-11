@@ -10,13 +10,23 @@ session. It is not a general X11 package: the launcher deliberately selects
 Electron's Wayland backend, so an X11-only session is outside the supported
 runtime.
 
-The package has the requested two runtime properties:
+The package has three runtime properties:
 
 * `computer-use-linux` is enabled and its Linux native helper is compiled from
   the pinned Rust source commit.
 * `/usr/bin/chatgpt-desktop-wayland` and the desktop entry append
   `--ozone-platform=wayland`, so an X11 flag left in a user flag file cannot
   make this variant silently start through XWayland.
+* The built-in pet/Mini overlay is disabled, including saved-state restoration,
+  prewarming, manual pet opens, command search and `/pet`.
+
+`patches-disable-pets.patch` adds the package's `disable-pets` feature. It is
+independent of the optional community `pet-overlay` adaptation. Pet artwork and
+saved preferences are retained, but cannot reopen the overlay in this build.
+The shared Quick Chat shortcut controller remains available; its pet fallback
+cannot reopen the overlay.
+Preflight and package checks exercise this behavior against the actual ASAR
+and reject missing, ambiguous or partially applied patches.
 
 The official `chatgpt-desktop` package cannot be installed beside this variant;
 pacman replaces it so `yay -Syu` continues to own upgrades. Runtime state and
@@ -64,9 +74,9 @@ The updater uses the reviewed builder commit pinned in `PKGBUILD`. Builder
 upgrades require reviewing the local patches and validating a full build first.
 
 The reviewed builder commit
-[`75c00cbaaaf6736c75c70362ab58b79b17488c2c`](https://github.com/ilysenko/codex-desktop-linux/commit/75c00cbaaaf6736c75c70362ab58b79b17488c2c)
-includes the Computer Use audio-environment changes and Rspack main-process and
-webview support for official ChatGPT 26.1029.61003.
+[`61b5e818dc0b46ee531994d8bbb09d81e9581843`](https://github.com/ilysenko/codex-desktop-linux/commit/61b5e818dc0b46ee531994d8bbb09d81e9581843)
+supports official ChatGPT 26.1106.51428 and Computer Use helper 0.7.49,
+including the current native application service and Rspack webview contracts.
 `patches-grim-niri.patch` retains the Niri screenshot adaptation and its
 regression tests against this builder.
 

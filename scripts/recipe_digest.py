@@ -20,6 +20,7 @@ RECIPE_FILES = (
     "LicenseRef-OpenAI-Terms",
     "patches-grim-niri.patch",
     "patches-builder-portability.patch",
+    "patches-disable-pets.patch",
     "builder-main-process.cjs",
     "builder-main-process.test.cjs",
     "builder-acorn.cjs",

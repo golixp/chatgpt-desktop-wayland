@@ -86,8 +86,9 @@ JS
 
 phase=pristine_contracts
 # These tests require pristine official code, not an already patched package.
-CODEX_SIGNED_EXTRACTED_APP="$scratch/app" node --test \
-    "$builder_dir/linux-features/computer-use-linux/current-signed.test.js"
+CODEX_SIGNED_EXTRACTED_APP="$scratch/app" CODEX_TEST_ALREADY_PATCHED=0 node --test \
+    "$builder_dir/linux-features/computer-use-linux/current-signed.test.js" \
+    "$builder_dir/linux-features/disable-pets/test.js"
 
 phase=patch
 node "$builder_dir/scripts/patch-linux-window-ui.js" \
@@ -95,6 +96,7 @@ node "$builder_dir/scripts/patch-linux-window-ui.js" \
 
 phase=patched_contracts
 CODEX_SIGNED_EXTRACTED_APP="$scratch/app" CODEX_TEST_ALREADY_PATCHED=1 node --test \
-    "$builder_dir/linux-features/computer-use-linux/resume.test.js"
+    "$builder_dir/linux-features/computer-use-linux/resume.test.js" \
+    "$builder_dir/linux-features/disable-pets/test.js"
 phase=complete
 echo 'Compatibility preflight passed; native compilation may proceed.'

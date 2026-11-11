@@ -1,0 +1,251 @@
+diff --git a/linux-features/disable-pets/README.md b/linux-features/disable-pets/README.md
+new file mode 100644
+index 00000000..7a17dd8a
+--- /dev/null
++++ b/linux-features/disable-pets/README.md
+@@ -0,0 +1,16 @@
++# Disable built-in pets
++
++The Wayland package enables this feature during preparation. It prevents the
++built-in pet/Mini overlay from opening or prewarming, including restoration of
++saved state and direct shortcut calls. Mini commands are
++unavailable in desktop and renderer command registries, and `/pet` is disabled.
++Saved preferences and installed pet artwork are retained. The shared Quick Chat
++shortcut controller is preserved; its pet fallback cannot open the overlay.
++
++This is independent of the optional `pet-overlay` compositor adaptation.
++Descriptors identify unique semantic owners, reject missing or partial patches,
++and validate idempotence. The packaged ASAR is checked again before packaging.
++
++Run `node --test linux-features/disable-pets/test.js`. Set
++`CODEX_SIGNED_EXTRACTED_APP` to check a verified extracted official bundle;
++set `CODEX_TEST_ALREADY_PATCHED=1` to require an already disabled bundle.
+diff --git a/linux-features/disable-pets/feature.json b/linux-features/disable-pets/feature.json
+new file mode 100644
+index 00000000..3f57da30
+--- /dev/null
++++ b/linux-features/disable-pets/feature.json
+@@ -0,0 +1,7 @@
++{
++  "id": "disable-pets",
++  "title": "Disable built-in pets",
++  "description": "Disable the built-in desktop pet and Mini overlay in this package.",
++  "defaultEnabled": false,
++  "entrypoints": { "patchDescriptors": "./patch.js" }
++}
+diff --git a/linux-features/disable-pets/patch.js b/linux-features/disable-pets/patch.js
+new file mode 100644
+index 00000000..6194ae29
+--- /dev/null
++++ b/linux-features/disable-pets/patch.js
+@@ -0,0 +1,116 @@
++"use strict";
++
++const { parse } = require("../../scripts/patches/lib/builder-acorn.cjs");
++const { mainBundlePatch, webviewAssetPatch } = require("../../scripts/patches/descriptor.js");
++const PREFIX = "/* wayland-disable-pets:";
++
++function fail(message) { throw new Error(`Disable pets contract drift: ${message}`); }
++function nodes(source) {
++  const result = [];
++  const stack = [parse(source, { ecmaVersion: "latest", sourceType: "module" })];
++  while (stack.length) {
++    const node = stack.pop();
++    if (node == null || typeof node !== "object") continue;
++    if (typeof node.type === "string") result.push(node);
++    for (const value of Object.values(node)) {
++      if (Array.isArray(value)) stack.push(...value);
++      else if (value != null && typeof value === "object") stack.push(value);
++    }
++  }
++  return result;
++}
++function key(node) { return node.computed ? null : node.key?.name ?? node.key?.value; }
++function property(node, name) {
++  const matches = node.properties.filter(p => key(p) === name);
++  if (matches.length !== 1) fail(`expected one ${name} property`);
++  return matches[0].value;
++}
++function one(values, label) {
++  if (values.length !== 1) fail(`expected one ${label}, found ${values.length}`);
++  return values[0];
++}
++function edits(source, changes) {
++  for (const { start, end, text } of changes.sort((a, b) => b.start - a.start)) {
++    source = source.slice(0, start) + text + source.slice(end);
++  }
++  return source;
++}
++function guard(source, body, label, statement) {
++  const text = `${PREFIX}${label} */${statement}`;
++  const current = source.slice(body.start + 1, body.end - 1);
++  if (current.startsWith(text)) {
++    if (current.split(PREFIX).length !== 2) fail(`duplicate ${label} guard`);
++    return [];
++  }
++  if (current.includes(PREFIX)) fail(`partial ${label} guard`);
++  return [{ start: body.start + 1, end: body.start + 1, text }];
++}
++
++function runtimeContract(source) {
++  const all = nodes(source);
++  const owner = one(all.filter(node =>
++    /^(ClassDeclaration|ClassExpression)$/.test(node.type) &&
++    ["petOpenIntent", "isNotchManager", "shouldPresentWindow", "ensureWindow", "open"].every(
++      name => node.body.body.some(member => key(member) === name))), "pet window manager");
++  const methods = Object.fromEntries(["open", "ensureWindow", "shouldPresentWindow"].map(name => {
++    const method = one(owner.body.body.filter(member => key(member) === name), name);
++    if (method.type !== "MethodDefinition" || method.static || method.kind !== "method" ||
++        method.value.async !== (name !== "shouldPresentWindow")) fail(`changed ${name} method`);
++    return [name, method];
++  }));
++  return { methods };
++}
++
++function applyRuntime(source) {
++  const { methods } = runtimeContract(source);
++  return edits(source, [
++    ...guard(source, methods.open.value.body, "open", "return;"),
++    ...guard(source, methods.ensureWindow.value.body, "window", "return null;"),
++    ...guard(source, methods.shouldPresentWindow.value.body, "visibility", "return false;"),
++  ]);
++}
++
++function replaceValue(source, object, name, label, replacement, pristine) {
++  const value = property(object, name);
++  // The marker precedes the AST value, so include it when recognizing a repeat.
++  const marker = `${PREFIX}${label} */`;
++  const before = source.slice(value.start - marker.length, value.start);
++  const current = source.slice(value.start, value.end);
++  if (before === marker && current === replacement) return [];
++  if (before === marker || !pristine(value)) fail(`changed ${label}`);
++  return [{ start: value.start, end: value.end, text: marker + replacement }];
++}
++const trueValue = node => node.type === "UnaryExpression" && node.operator === "!" && node.argument.value === 0;
++function commandObject(source) {
++  return one(nodes(source).filter(node => node.type === "ObjectExpression" &&
++    node.properties.some(p => key(p) === "id" && p.value?.value === "openAvatarOverlay")), "Mini command");
++}
++function applyCommand(source) {
++  const object = commandObject(source);
++  if (property(object, "titleIntlId").value !== "codex.command.showMiniOverlay") fail("changed Mini title");
++  return edits(source, [
++    ...replaceValue(source, object, "availableIn", "platforms", "[]",
++      node => node.type === "ArrayExpression" && node.elements.length === 1 && node.elements[0].value === "electron"),
++    ...replaceValue(source, object, "unifiedSearch", "search", "false", trueValue),
++  ]);
++}
++function applySlashCommand(source) {
++  const object = one(nodes(source).filter(node => node.type === "ObjectExpression" &&
++    node.properties.some(p => key(p) === "id" && p.value?.value === "pet") &&
++    node.properties.some(p => key(p) === "requiresEmptyComposer")), "pet slash command");
++  return edits(source, replaceValue(source, object, "enabled", "slash", "false", trueValue));
++}
++
++const runtimeMatches = source => source.includes("petOpenIntent") && source.includes("toggleAvatarOverlay:");
++const commandMatches = source => /id:["`]openAvatarOverlay["`]/.test(source);
++const descriptors = [
++  mainBundlePatch({ id: "runtime", matches: runtimeMatches, expectedMatches: 1,
++    apply: applyRuntime, isApplied: source => source.includes(`${PREFIX}window */return null;`) && applyRuntime(source) === source }),
++  mainBundlePatch({ id: "command", matches: commandMatches, expectedMatches: 1,
++    apply: applyCommand, isApplied: source => source.includes(`${PREFIX}platforms */[]`) && applyCommand(source) === source }),
++  webviewAssetPatch({ id: "renderer-command", assetNeedles: ["codex.command.showMiniOverlay"],
++    assetMatch: commandMatches, apply: applyCommand }),
++  webviewAssetPatch({ id: "slash-command", assetNeedles: ["avatar_overlay_slash_command", "composer.petOverlaySlashCommand.title"],
++    apply: applySlashCommand }),
++];
++module.exports = { applyRuntime, applyCommand, applySlashCommand, runtimeContract, commandObject, descriptors };
+diff --git a/linux-features/disable-pets/test.js b/linux-features/disable-pets/test.js
+new file mode 100644
+index 00000000..217fc8e4
+--- /dev/null
++++ b/linux-features/disable-pets/test.js
+@@ -0,0 +1,88 @@
++"use strict";
++
++const assert = require("node:assert/strict");
++const fs = require("node:fs");
++const path = require("node:path");
++const test = require("node:test");
++const vm = require("node:vm");
++const { findMainProcessChunks, findWebviewAssetsContaining } = require("../../scripts/patches/lib/assets.js");
++const { applyRuntime, applyCommand, applySlashCommand, runtimeContract, descriptors } = require("./patch.js");
++
++const runtime = `class Pet {
++  petOpenIntent=true;isNotchManager=false;
++  async open(){throw Error("must not save open intent")}
++  async ensureWindow(){throw Error("must not construct a window")}
++  shouldPresentWindow(){return this.petOpenIntent}
++}
++const unrelatedQuickChat=function(){return "quick-chat"};`;
++const command = 'const commands=[{id:"unrelated",enabled:true},{id:"openAvatarOverlay",' +
++  'titleIntlId:"codex.command.showMiniOverlay",availableIn:["electron"],unifiedSearch:!0}];';
++const slash = 'const command={id:"pet",requiresEmptyComposer:!1,enabled:!0,onSelect:()=>{}};';
++
++async function assertRuntimeDisabled(source) {
++  const { methods } = runtimeContract(source);
++  const behavior = { open: undefined, ensureWindow: null, shouldPresentWindow: false };
++  for (const [name, member] of Object.entries(methods)) {
++    const Owner = vm.runInNewContext(`(class{${source.slice(member.start, member.end)}})`);
++    // True saved state and live presentation requests must not restore a pet.
++    const instance = Object.assign(new Owner(), {
++      petOpenIntent: true, presentationVisibility: true, startupPresentationVisibility: true,
++    });
++    assert.equal(await instance[name](1), behavior[name], name);
++  }
++}
++
++test("saved state and direct calls cannot open a pet; unrelated Quick Chat code is preserved", async () => {
++  const patched = applyRuntime(runtime);
++  assert.notEqual(patched, runtime);
++  assert.equal(applyRuntime(patched), patched);
++  assert.equal(vm.runInNewContext(patched + "unrelatedQuickChat()"), "quick-chat");
++  await assertRuntimeDisabled(patched);
++});
++
++test("missing, duplicate, and partial runtime owners fail closed", () => {
++  assert.throws(() => applyRuntime("class Unrelated{}"), /contract drift/);
++  assert.throws(() => applyRuntime(runtime + runtime.replaceAll("Pet", "Other").replace("unrelatedQuickChat", "otherQuickChat")), /contract drift/);
++  assert.throws(() => applyRuntime(applyRuntime(runtime).replace("return null;", "return true;")), /partial window guard/);
++});
++
++test("Mini command and pet slash command are unavailable without changing other commands", () => {
++  const patched = applyCommand(command);
++  assert.equal(applyCommand(patched), patched);
++  const values = vm.runInNewContext(patched + "commands");
++  assert.equal(values[0].enabled, true);
++  assert.equal(values[1].availableIn.length, 0);
++  assert.equal(values[1].unifiedSearch, false);
++  const disabledSlash = applySlashCommand(slash);
++  assert.equal(applySlashCommand(disabledSlash), disabledSlash);
++  assert.equal(vm.runInNewContext(disabledSlash + "command.enabled"), false);
++  assert.throws(() => applyCommand(command.replace("unifiedSearch", "changedSearch")), /expected one unifiedSearch/);
++  assert.throws(() => applyCommand(patched.replace("platforms */[]", "platforms */[\"electron\"]")), /changed platforms/);
++});
++
++test("the verified official bundle has all pet owners and disables them idempotently", {
++  skip: !process.env.CODEX_SIGNED_EXTRACTED_APP,
++}, async () => {
++  const app = process.env.CODEX_SIGNED_EXTRACTED_APP;
++  const alreadyPatched = process.env.CODEX_TEST_ALREADY_PATCHED === "1";
++  const main = findMainProcessChunks(app);
++  assert.ok(main);
++  const chunks = main.chunks.map(name => ({ name, source: fs.readFileSync(path.join(main.buildDir, name), "utf8") }));
++  for (const descriptor of descriptors) {
++    const owners = descriptor.phase === "main-bundle"
++      ? chunks.filter(chunk => descriptor.matches(chunk.source))
++      : findWebviewAssetsContaining(app, descriptor.assetNeedles)
++        .map(name => ({ name, source: fs.readFileSync(path.join(app, "webview/assets", name), "utf8") }))
++        .filter(chunk => !descriptor.assetMatch || descriptor.assetMatch(chunk.source));
++    if (descriptor.phase === "main-bundle") assert.equal(owners.length, 1, descriptor.id);
++    else assert.ok(owners.length > 0, descriptor.id);
++    for (const { name, source } of owners) {
++      const patched = descriptor.apply(source);
++      if (alreadyPatched) assert.equal(patched, source, `${name} must already disable ${descriptor.id}`);
++      else assert.notEqual(patched, source, `${name} must reproduce enabled ${descriptor.id}`);
++      assert.equal(descriptor.apply(patched), patched, `${name} is idempotent`);
++      if (descriptor.isApplied) assert.equal(descriptor.isApplied(patched), true);
++      if (descriptor.id === "runtime") await assertRuntimeDisabled(patched);
++    }
++  }
++});
